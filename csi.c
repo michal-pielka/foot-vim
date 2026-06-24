@@ -1396,11 +1396,12 @@ csi_dispatch(struct terminal *term, uint8_t final)
             case 22: { /* push window title */
                 /* 0 - icon + title, 1 - icon, 2 - title */
                 unsigned what = vt_param_get(term, 1, 0);
-                if ((what == 0 || what == 2) &&
-                    tll_length(term->window_title_stack) < 128)
-                {
-                    tll_push_back(
-                        term->window_title_stack, xstrdup(term->window_title));
+                if (what == 0 || what == 2) {
+                    if (tll_length(term->window_title_stack) < 128)
+                        tll_push_back(
+                            term->window_title_stack, xstrdup(term->window_title));
+                    else
+                        LOG_WARN("window title stack depth capped at 128 entries");
                 }
                 break;
             }
@@ -2148,7 +2149,11 @@ csi_dispatch(struct terminal *term, uint8_t final)
             if (slot == 0)
                 slot = term->color_stack.idx + 1;
 
-            slot = min(slot, 128);
+            const size_t max_slot = 128;
+            if (slot > max_slot) {
+                LOG_WARN("XTPUSHCOLORS slot index capped to 128");
+                slot = max_slot;
+            }
 
             if (term->color_stack.size < slot) {
                 const size_t new_size = slot;
