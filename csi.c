@@ -798,7 +798,8 @@ csi_dispatch(struct terminal *term, uint8_t final)
                  * ECMA-48, the behaviour is undefined if REP was
                  * _not_ preceded by a graphical character.
                  */
-                int count = vt_param_get(term, 0, 1);
+                const size_t max_count = term->grid->num_rows * term->cols;
+                int count = min(vt_param_get(term, 0, 1), max_count);
                 LOG_DBG("REP: '%lc' %d times", (wint_t)term->vt.last_printed, count);
 
                 int width;
