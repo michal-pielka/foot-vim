@@ -228,6 +228,9 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_WORD_RIGHT] = "word-right",
     [BIND_ACTION_VIM_WORD_LEFT_END] = "word-left-end",
     [BIND_ACTION_VIM_WORD_RIGHT_END] = "word-right-end",
+    [BIND_ACTION_VIM_BRACKET] = "bracket",
+    [BIND_ACTION_VIM_PARAGRAPH_UP] = "paragraph-up",
+    [BIND_ACTION_VIM_PARAGRAPH_DOWN] = "paragraph-down",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3490,6 +3493,9 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_WORD_LEFT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_b}}},
         {BIND_ACTION_VIM_WORD_RIGHT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_w}}},
         {BIND_ACTION_VIM_WORD_RIGHT_END, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_e}}},
+        {BIND_ACTION_VIM_BRACKET, m("none"), {{XKB_KEY_percent}}},
+        {BIND_ACTION_VIM_PARAGRAPH_UP, m("none"), {{XKB_KEY_braceleft}}},
+        {BIND_ACTION_VIM_PARAGRAPH_DOWN, m("none"), {{XKB_KEY_braceright}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);

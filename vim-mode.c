@@ -417,6 +417,104 @@ motion_word_right_end(struct vim_ctx *ctx)
     motion_word(ctx, VIM_RIGHT, VIM_RIGHT);
 }
 
+/* Move to the matching bracket, if the cursor is on one */
+static void
+motion_bracket(struct vim_ctx *ctx)
+{
+    static const struct {
+        char32_t open;
+        char32_t close;
+    } pairs[] = {
+        {U'(', U')'}, {U'[', U']'}, {U'{', U'}'}, {U'<', U'>'},
+    };
+
+    const char32_t start_char = base_char(
+        ctx, row_at(ctx, ctx->pos.row), ctx->pos.col);
+
+    /* Find the matching bracket we're looking for */
+    bool forward = false;
+    char32_t end_char = U'\0';
+
+    for (size_t i = 0; i < ALEN(pairs); i++) {
+        if (pairs[i].open == start_char) {
+            forward = true;
+            end_char = pairs[i].close;
+            break;
+        }
+        if (pairs[i].close == start_char) {
+            forward = false;
+            end_char = pairs[i].open;
+            break;
+        }
+    }
+
+    if (end_char == U'\0')
+        return;
+
+    const enum vim_direction direction = forward ? VIM_RIGHT : VIM_LEFT;
+    struct coord pos = ctx->pos;
+
+    /* For every character match that equals the starting bracket, we
+     * ignore one bracket of the opposite type */
+    int skip_pairs = 0;
+
+    while (!is_boundary(ctx, pos, direction)) {
+        pos = advance(ctx, pos, direction);
+
+        const struct row *row = row_at(ctx, pos.row);
+        if (is_spacer(row, pos.col))
+            continue;
+
+        const char32_t wc = base_char(ctx, row, pos.col);
+
+        if (wc == end_char && skip_pairs == 0) {
+            ctx->pos = pos;
+            return;
+        } else if (wc == start_char)
+            skip_pairs++;
+        else if (wc == end_char)
+            skip_pairs--;
+    }
+}
+
+static bool
+row_is_clear(const struct vim_ctx *ctx, int sb_row)
+{
+    return last_occupied_in_row(ctx, sb_row) < 0;
+}
+
+/* Move above the current paragraph */
+static void
+motion_paragraph_up(struct vim_ctx *ctx)
+{
+    int row = ctx->pos.row - 1;
+
+    /* Skip empty rows until we find the next paragraph, then skip
+     * over the paragraph until we reach the next empty row */
+    while (row > 0 && row_is_clear(ctx, row))
+        row--;
+    while (row > 0 && !row_is_clear(ctx, row))
+        row--;
+
+    ctx->pos.row = max(row, 0);
+    ctx->pos.col = 0;
+}
+
+/* Move below the current paragraph */
+static void
+motion_paragraph_down(struct vim_ctx *ctx)
+{
+    int row = ctx->pos.row;
+
+    while (row < ctx->sb_max && row_is_clear(ctx, row))
+        row++;
+    while (row < ctx->sb_max && !row_is_clear(ctx, row))
+        row++;
+
+    ctx->pos.row = min(row, ctx->sb_max);
+    ctx->pos.col = 0;
+}
+
 /* First column, or beginning of the logical line when already there */
 static void
 motion_first(struct vim_ctx *ctx)
@@ -719,6 +817,15 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_VIM_WORD_RIGHT_END:
         return motion(term, &motion_word_right_end);
+
+    case BIND_ACTION_VIM_BRACKET:
+        return motion(term, &motion_bracket);
+
+    case BIND_ACTION_VIM_PARAGRAPH_UP:
+        return motion(term, &motion_paragraph_up);
+
+    case BIND_ACTION_VIM_PARAGRAPH_DOWN:
+        return motion(term, &motion_paragraph_down);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
