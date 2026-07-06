@@ -76,6 +76,11 @@
 * Command line option `--class`, an alias for `--app-id`. Intended to
   be used by scripts and similar that wants to launch terminal
   instances in a terminal agnostic way ([#2368][2368]).
+* Vim mode, modeled after Alacritty's vi mode: navigate the terminal
+  content and the scrollback, select and copy text, using vi-like key
+  bindings. Enter it with `vim-mode-start` (default:
+  `ctrl`+`shift`+`space`), and customize it in the new
+  `[vim-bindings]` section.
 
 [2368]: https://codeberg.org/dnkl/foot/issues/2368
 

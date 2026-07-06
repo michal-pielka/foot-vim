@@ -1492,6 +1492,12 @@ e.g. *search-start=none*.
 	
 	Default: _none_
 
+*vim-mode-start*
+	Enters vim mode, where the terminal content, including the
+	scrollback, can be navigated, selected and copied using vi-like
+	key bindings. See **vim-bindings**. Default:
+	_Control+Shift+space_.
+
 *quit*
 	Quit foot. Default: _none_.
 
@@ -1657,6 +1663,124 @@ Be careful; do not use single-letter keys that are also used in
 	label.
 	
 	Default: _t_.
+
+# SECTION: vim-bindings
+
+This section lets you override the default key bindings used in vim
+mode. The syntax is exactly the same as the regular **key-bindings**.
+
+Vim mode, modeled after Alacritty's vi mode, lets you move a cursor
+around the terminal content, including the scrollback, and select and
+copy text using the keyboard. Enter it with *vim-mode-start* (see
+**key-bindings**). While active, all keyboard input is consumed by
+vim mode.
+
+*cancel*
+	Exits vim mode, and scrolls the view back to the bottom. Default:
+	_Control+Shift+space i Control+c_.
+
+*up*, *down*, *left*, *right*
+	Move the cursor one cell. *left* and *right* wrap around soft
+	line breaks. Default: _k Up_, _j Down_, _h Left_, _l Right_.
+
+*first*
+	Move to the first column, or to the beginning of the logical line
+	when already in the first column. Default: _0 Home_.
+
+*last*
+	Move to the last non-empty cell, following the logical line
+	across soft line breaks, or to the last column when beyond the
+	last non-empty cell. Default: _dollar End_.
+
+*first-occupied*
+	Move to the first non-empty cell of the row, or of the logical
+	line when already there. Default: _asciicircum_.
+
+*high*, *middle*, *low*
+	Move to the top, middle and bottom of the viewport. Default:
+	_Shift+h_, _Shift+m_, _Shift+l_.
+
+*semantic-left*, *semantic-right*
+	Move to the start of the previous/next word, where words are
+	separated by whitespace and the characters in
+	*[main].word-delimiters*. Default: _b_, _w_.
+
+*semantic-left-end*, *semantic-right-end*
+	Move to the end of the previous/next word. Default: _none_, _e_.
+
+*word-left*, *word-right*
+	Move to the start of the previous/next whitespace separated word.
+	Default: _Shift+b_, _Shift+w_.
+
+*word-left-end*, *word-right-end*
+	Move to the end of the previous/next whitespace separated word.
+	Default: _none_, _Shift+e_.
+
+*bracket*
+	Move to the bracket matching the one under the cursor. *()*,
+	*[]*, *{}* and *<>* are matched. Default: _percent_.
+
+*paragraph-up*, *paragraph-down*
+	Move above/below the current paragraph, i.e. the current block of
+	non-empty rows. Default: _braceleft_, _braceright_.
+
+*scrollback-up-page*, *scrollback-up-half-page*, *scrollback-up-line*
+	Scroll up in the scrollback, dragging the cursor along. Default:
+	_Control+b Shift+Page_Up_, _Control+u_, _Control+y_.
+
+*scrollback-down-page*, *scrollback-down-half-page*, *scrollback-down-line*
+	Scroll down in the scrollback, dragging the cursor along.
+	Default: _Control+f Shift+Page_Down_, _Control+d_, _Control+e_.
+
+*scrollback-home*, *scrollback-end*
+	Move the cursor, and the view, to the beginning/end of the
+	scrollback. Default: _g_, _Shift+g_.
+
+*center-cursor*
+	Scroll the view, so that the cursor row is centered. Default:
+	_z_.
+
+*toggle-normal-selection*, *toggle-line-selection*, *toggle-block-selection*, *toggle-semantic-selection*
+	Start a character/line/block/word wise selection at the cursor.
+	Cursor motions extend the selection. Triggering the same action
+	again cancels the selection, while triggering a different one
+	switches the selection kind. Default: _v_, _Shift+v_,
+	_Control+v_, _Mod1+v_.
+
+*clear-selection*
+	Cancel the current selection, without leaving vim mode. Default:
+	_Escape_.
+
+*copy*
+	Copy the current selection to the _clipboard_, then clear the
+	selection. Default: _y_.
+
+*copy-to-end-of-line*
+	Select from the cursor to the end of the line, and copy that to
+	the _clipboard_. Default: _Shift+y_.
+
+*inline-search-forward*, *inline-search-backward*
+	Search forwards/backwards for the next typed character, within
+	the current logical line (like *f*/*F* in vi). Default: _f_,
+	_Shift+f_.
+
+*inline-search-forward-short*, *inline-search-backward-short*
+	Like *inline-search-forward*/*inline-search-backward*, but stop
+	one cell short of the match (like *t*/*T* in vi). Default: _t_,
+	_Shift+t_.
+
+*inline-search-next*, *inline-search-previous*
+	Repeat the last inline search, in the same/opposite direction.
+	Default: _semicolon_, _comma_.
+
+*search-start*
+	Start a scrollback search (see **search-bindings**). Committing
+	the search moves the cursor to the match. Default: _slash_.
+
+*search-next*, *search-previous*
+	Jump to the next/previous match of the most recent search query,
+	wrapping around at the ends of the scrollback. Default: _n_,
+	_Shift+n_.
 
 # SECTION: text-bindings
 
