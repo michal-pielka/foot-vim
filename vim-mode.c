@@ -82,6 +82,19 @@ scroll_to_cursor(struct vim_ctx *ctx)
             ctx->term, ctx->pos.row - (view + ctx->term->rows - 1));
 }
 
+/* Update an ongoing selection to follow the cursor */
+static void
+update_selection(struct vim_ctx *ctx)
+{
+    struct terminal *term = ctx->term;
+
+    if (term->selection.coords.start.row < 0 || !term->selection.ongoing)
+        return;
+
+    /* selection_update() takes view relative coordinates */
+    selection_update(term, ctx->pos.col, ctx->pos.row - view_sb(ctx));
+}
+
 static void
 apply_cursor(struct vim_ctx *ctx)
 {
@@ -96,6 +109,7 @@ apply_cursor(struct vim_ctx *ctx)
     term->vim.cursor.col = ctx->pos.col;
 
     scroll_to_cursor(ctx);
+    update_selection(ctx);
     render_refresh(term);
 }
 
@@ -792,6 +806,7 @@ vim_mode_view_changed(struct terminal *term)
     ctx.pos.row = clamped;
     term->vim.cursor.row = sb_to_abs(&ctx, ctx.pos.row);
     term->vim.cursor.col = ctx.pos.col;
+    update_selection(&ctx);
     render_refresh(term);
 }
 
@@ -815,6 +830,65 @@ vim_mode_resized(struct terminal *term)
     struct vim_ctx ctx = ctx_for_term(term);
     term->vim.cursor.row = sb_to_abs(&ctx, ctx.pos.row);
     term->vim.cursor.col = ctx.pos.col;
+}
+
+/* Start a new selection at the cursor, toggle an existing one of the
+ * same kind off, or switch the kind of an existing one */
+static bool
+toggle_selection(struct terminal *term, enum selection_kind kind)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    scroll_to_cursor(&ctx);
+
+    const bool have_selection =
+        term->selection.coords.start.row >= 0 &&
+        term->selection.coords.end.row >= 0;
+
+    if (have_selection && term->selection.kind == kind) {
+        selection_cancel(term);
+        return true;
+    }
+
+    const int view = view_sb(&ctx);
+    struct coord anchor = ctx.pos;
+
+    if (have_selection) {
+        /* Switch selection kind, keeping the anchor point when it is
+         * still inside the viewport */
+        const int pivot_row =
+            abs_to_sb(&ctx, term->selection.pivot.start.row &
+                      (ctx.grid->num_rows - 1));
+
+        if (pivot_row >= view && pivot_row < view + term->rows) {
+            anchor = (struct coord){
+                min(term->selection.pivot.start.col, term->cols - 1),
+                pivot_row,
+            };
+        }
+    }
+
+    selection_start(term, anchor.col, anchor.row - view, kind, false);
+
+    /* Extend to the cursor. This also ensures the selection is never
+     * empty, so that a subsequent copy yanks at least one cell */
+    selection_update(term, ctx.pos.col, ctx.pos.row - view);
+    return true;
+}
+
+static bool
+yank(struct seat *seat, struct terminal *term, uint32_t serial)
+{
+    if (term->selection.coords.start.row < 0 ||
+        term->selection.coords.end.row < 0)
+    {
+        return true;
+    }
+
+    selection_finalize(seat, term, serial);
+    selection_to_clipboard(seat, term, serial);
+    selection_cancel(term);
+    return true;
 }
 
 static bool
@@ -924,6 +998,30 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_VIM_CENTER_CURSOR:
         return center_on_cursor(term);
+
+    case BIND_ACTION_VIM_TOGGLE_NORMAL_SELECTION:
+        return toggle_selection(term, SELECTION_CHAR_WISE);
+
+    case BIND_ACTION_VIM_TOGGLE_LINE_SELECTION:
+        return toggle_selection(term, SELECTION_LINE_WISE);
+
+    case BIND_ACTION_VIM_TOGGLE_BLOCK_SELECTION:
+        return toggle_selection(term, SELECTION_BLOCK);
+
+    case BIND_ACTION_VIM_TOGGLE_SEMANTIC_SELECTION:
+        return toggle_selection(term, SELECTION_WORD_WISE);
+
+    case BIND_ACTION_VIM_CLEAR_SELECTION:
+        selection_cancel(term);
+        return true;
+
+    case BIND_ACTION_VIM_COPY:
+        return yank(seat, term, serial);
+
+    case BIND_ACTION_VIM_COPY_TO_END_OF_LINE:
+        toggle_selection(term, SELECTION_CHAR_WISE);
+        motion(term, &motion_last);
+        return yank(seat, term, serial);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");

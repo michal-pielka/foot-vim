@@ -240,6 +240,13 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_SCROLLBACK_HOME] = "scrollback-home",
     [BIND_ACTION_VIM_SCROLLBACK_END] = "scrollback-end",
     [BIND_ACTION_VIM_CENTER_CURSOR] = "center-cursor",
+    [BIND_ACTION_VIM_TOGGLE_NORMAL_SELECTION] = "toggle-normal-selection",
+    [BIND_ACTION_VIM_TOGGLE_LINE_SELECTION] = "toggle-line-selection",
+    [BIND_ACTION_VIM_TOGGLE_BLOCK_SELECTION] = "toggle-block-selection",
+    [BIND_ACTION_VIM_TOGGLE_SEMANTIC_SELECTION] = "toggle-semantic-selection",
+    [BIND_ACTION_VIM_CLEAR_SELECTION] = "clear-selection",
+    [BIND_ACTION_VIM_COPY] = "copy",
+    [BIND_ACTION_VIM_COPY_TO_END_OF_LINE] = "copy-to-end-of-line",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3516,6 +3523,13 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_SCROLLBACK_HOME, m("none"), {{XKB_KEY_g}}},
         {BIND_ACTION_VIM_SCROLLBACK_END, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_g}}},
         {BIND_ACTION_VIM_CENTER_CURSOR, m("none"), {{XKB_KEY_z}}},
+        {BIND_ACTION_VIM_TOGGLE_NORMAL_SELECTION, m("none"), {{XKB_KEY_v}}},
+        {BIND_ACTION_VIM_TOGGLE_LINE_SELECTION, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_v}}},
+        {BIND_ACTION_VIM_TOGGLE_BLOCK_SELECTION, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_v}}},
+        {BIND_ACTION_VIM_TOGGLE_SEMANTIC_SELECTION, m(XKB_MOD_NAME_ALT), {{XKB_KEY_v}}},
+        {BIND_ACTION_VIM_CLEAR_SELECTION, m("none"), {{XKB_KEY_Escape}}},
+        {BIND_ACTION_VIM_COPY, m("none"), {{XKB_KEY_y}}},
+        {BIND_ACTION_VIM_COPY_TO_END_OF_LINE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_y}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);
