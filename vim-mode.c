@@ -126,6 +126,48 @@ is_wrap(const struct vim_ctx *ctx, struct coord pos)
     return pos.col == ctx->term->cols - 1 && row_wraps(ctx, pos.row);
 }
 
+static char32_t
+base_char(const struct vim_ctx *ctx, const struct row *row, int col)
+{
+    char32_t wc = row->cells[col].wc;
+    if (wc >= CELL_COMB_CHARS_LO && wc <= CELL_COMB_CHARS_HI)
+        wc = composed_lookup(ctx->term->composed, wc - CELL_COMB_CHARS_LO)->chars[0];
+    return wc;
+}
+
+static bool
+is_space(const struct vim_ctx *ctx, struct coord pos)
+{
+    const struct row *row = row_at(ctx, pos.row);
+    if (is_spacer(row, pos.col))
+        return false;
+
+    const char32_t wc = base_char(ctx, row, pos.col);
+    return wc == U'\0' || wc == U' ' || wc == U'\t';
+}
+
+/* Column of the first non-empty cell in the row, or -1 */
+static int
+first_occupied_in_row(const struct vim_ctx *ctx, int sb_row)
+{
+    for (int col = 0; col < ctx->term->cols; col++) {
+        if (!is_space(ctx, (struct coord){col, sb_row}))
+            return col;
+    }
+    return -1;
+}
+
+/* Column of the last non-empty cell in the row, or -1 */
+static int
+last_occupied_in_row(const struct vim_ctx *ctx, int sb_row)
+{
+    for (int col = ctx->term->cols - 1; col >= 0; col--) {
+        if (!is_space(ctx, (struct coord){col, sb_row}))
+            return col;
+    }
+    return -1;
+}
+
 enum vim_direction {VIM_LEFT, VIM_RIGHT};
 
 /* Move 'pos' off wide character spacer cells: to the base character
@@ -188,6 +230,129 @@ motion_right(struct vim_ctx *ctx)
         }
     } else
         ctx->pos.col = min(ctx->pos.col + 1, ctx->term->cols - 1);
+}
+
+/* First column, or beginning of the logical line when already there */
+static void
+motion_first(struct vim_ctx *ctx)
+{
+    ctx->pos = expand_wide(ctx, ctx->pos, VIM_LEFT);
+
+    while (ctx->pos.col == 0 && ctx->pos.row > 0 &&
+           row_wraps(ctx, ctx->pos.row - 1))
+    {
+        ctx->pos.row--;
+    }
+
+    ctx->pos.col = 0;
+}
+
+/* Last non-empty cell, or last column, across soft line breaks */
+static void
+motion_last(struct vim_ctx *ctx)
+{
+    struct coord pos = expand_wide(ctx, ctx->pos, VIM_RIGHT);
+    int occupied = last_occupied_in_row(ctx, pos.row);
+
+    if (pos.col < occupied) {
+        /* Jump to last occupied cell when not already at or beyond it */
+        pos.col = occupied;
+    } else if (is_wrap(ctx, pos)) {
+        /* Jump to last occupied cell across soft line breaks */
+        while (pos.row < ctx->sb_max && is_wrap(ctx, pos))
+            pos.row++;
+
+        occupied = last_occupied_in_row(ctx, pos.row);
+        if (occupied >= 0)
+            pos.col = occupied;
+    } else {
+        /* Jump to last column when beyond the last occupied cell */
+        pos.col = ctx->term->cols - 1;
+    }
+
+    ctx->pos = pos;
+}
+
+/* First non-empty cell of the row, or of the logical line when
+ * already there */
+static void
+motion_first_occupied(struct vim_ctx *ctx)
+{
+    const int last_col = ctx->term->cols - 1;
+    struct coord pos = expand_wide(ctx, ctx->pos, VIM_LEFT);
+
+    int occupied_col = first_occupied_in_row(ctx, pos.row);
+    if (occupied_col < 0)
+        occupied_col = last_col;
+
+    if (pos.col != occupied_col) {
+        ctx->pos.col = occupied_col;
+        return;
+    }
+
+    /* Already at the row's first occupied cell - jump across soft
+     * line breaks, to the logical line's first occupied cell */
+    struct coord found = {-1, -1};
+
+    for (int row = pos.row - 1; row >= 0; row--) {
+        if (!row_wraps(ctx, row))
+            break;
+
+        int col = first_occupied_in_row(ctx, row);
+        if (col >= 0)
+            found = (struct coord){col, row};
+    }
+
+    if (found.row < 0) {
+        /* Fallback to the next non-empty cell */
+        int row = pos.row;
+
+        while (true) {
+            int col = first_occupied_in_row(ctx, row);
+            if (col >= 0) {
+                found = (struct coord){col, row};
+                break;
+            }
+
+            if (row >= ctx->sb_max ||
+                !is_wrap(ctx, (struct coord){last_col, row}))
+            {
+                found = (struct coord){last_col, row};
+                break;
+            }
+
+            row++;
+        }
+    }
+
+    ctx->pos = found;
+}
+
+static void
+move_to_view_row(struct vim_ctx *ctx, int rel_row)
+{
+    const int row = min(view_sb(ctx) + rel_row, ctx->sb_max);
+    const int col = first_occupied_in_row(ctx, row);
+
+    ctx->pos = (struct coord){col >= 0 ? col : 0, row};
+}
+
+static void
+motion_high(struct vim_ctx *ctx)
+{
+    move_to_view_row(ctx, 0);
+}
+
+static void
+motion_middle(struct vim_ctx *ctx)
+{
+    move_to_view_row(ctx, max(ctx->term->rows / 2 - 1, 0));
+}
+
+static void
+motion_low(struct vim_ctx *ctx)
+{
+    move_to_view_row(ctx, ctx->term->rows - 1);
 }
 
 static bool
@@ -327,6 +492,24 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_VIM_RIGHT:
         return motion(term, &motion_right);
+
+    case BIND_ACTION_VIM_FIRST:
+        return motion(term, &motion_first);
+
+    case BIND_ACTION_VIM_LAST:
+        return motion(term, &motion_last);
+
+    case BIND_ACTION_VIM_FIRST_OCCUPIED:
+        return motion(term, &motion_first_occupied);
+
+    case BIND_ACTION_VIM_HIGH:
+        return motion(term, &motion_high);
+
+    case BIND_ACTION_VIM_MIDDLE:
+        return motion(term, &motion_middle);
+
+    case BIND_ACTION_VIM_LOW:
+        return motion(term, &motion_low);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
