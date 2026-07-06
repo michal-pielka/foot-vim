@@ -253,6 +253,9 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD_SHORT] = "inline-search-backward-short",
     [BIND_ACTION_VIM_INLINE_SEARCH_NEXT] = "inline-search-next",
     [BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS] = "inline-search-previous",
+    [BIND_ACTION_VIM_SEARCH_START] = "search-start",
+    [BIND_ACTION_VIM_SEARCH_NEXT] = "search-next",
+    [BIND_ACTION_VIM_SEARCH_PREVIOUS] = "search-previous",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3542,6 +3545,9 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD_SHORT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_t}}},
         {BIND_ACTION_VIM_INLINE_SEARCH_NEXT, m("none"), {{XKB_KEY_semicolon}}},
         {BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS, m("none"), {{XKB_KEY_comma}}},
+        {BIND_ACTION_VIM_SEARCH_START, m("none"), {{XKB_KEY_slash}}},
+        {BIND_ACTION_VIM_SEARCH_NEXT, m("none"), {{XKB_KEY_n}}},
+        {BIND_ACTION_VIM_SEARCH_PREVIOUS, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_n}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);

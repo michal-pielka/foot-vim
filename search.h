@@ -17,6 +17,13 @@ void search_add_chars(struct terminal *term, const char *text, size_t len);
 
 void search_selection_cancelled(struct terminal *term);
 
+/* Search for the last used search query, starting at 'abs_start'
+ * (absolute grid coordinates), wrapping around the scrollback.
+ * Returns true if a match was found */
+bool search_find_last_query(
+    struct terminal *term, struct coord abs_start,
+    enum search_direction direction, struct range *match);
+
 struct search_match_iterator {
     struct terminal *term;
     struct coord start;

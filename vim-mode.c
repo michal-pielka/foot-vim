@@ -12,6 +12,7 @@
 #include "grid.h"
 #include "misc.h"
 #include "render.h"
+#include "search.h"
 #include "selection.h"
 #include "util.h"
 
@@ -792,6 +793,21 @@ vim_mode_cancel(struct terminal *term)
 }
 
 void
+vim_mode_goto(struct terminal *term, struct coord pos)
+{
+    if (!term->vim.active)
+        return;
+
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    ctx.pos.row = min(
+        abs_to_sb(&ctx, pos.row & (ctx.grid->num_rows - 1)), ctx.sb_max);
+    ctx.pos.col = max(min(pos.col, term->cols - 1), 0);
+
+    apply_cursor(&ctx);
+}
+
+void
 vim_mode_view_changed(struct terminal *term)
 {
     if (!term->vim.active || term->is_searching)
@@ -1018,6 +1034,30 @@ yank(struct seat *seat, struct terminal *term, uint32_t serial)
     return true;
 }
 
+/* Jump to the next/previous match of the last search query */
+static bool
+search_jump(struct terminal *term, bool backward)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    /* Start the search at the cell next to the cursor */
+    struct coord start =
+        advance(&ctx, ctx.pos, backward ? VIM_LEFT : VIM_RIGHT);
+    start.row = sb_to_abs(&ctx, start.row);
+
+    struct range match;
+    if (!search_find_last_query(
+            term, start, backward ? SEARCH_BACKWARD : SEARCH_FORWARD, &match))
+    {
+        return true;
+    }
+
+    ctx.pos.row = min(abs_to_sb(&ctx, match.start.row), ctx.sb_max);
+    ctx.pos.col = max(min(match.start.col, term->cols - 1), 0);
+    apply_cursor(&ctx);
+    return true;
+}
+
 static bool
 execute_binding(struct seat *seat, struct terminal *term,
                 const struct key_binding *binding, uint32_t serial)
@@ -1169,6 +1209,16 @@ execute_binding(struct seat *seat, struct terminal *term,
     case BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS:
         inline_search_exec(term, !term->vim.inline_search.backward);
         return true;
+
+    case BIND_ACTION_VIM_SEARCH_START:
+        search_begin(term);
+        return true;
+
+    case BIND_ACTION_VIM_SEARCH_NEXT:
+        return search_jump(term, false);
+
+    case BIND_ACTION_VIM_SEARCH_PREVIOUS:
+        return search_jump(term, true);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
