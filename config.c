@@ -220,6 +220,14 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_HIGH] = "high",
     [BIND_ACTION_VIM_MIDDLE] = "middle",
     [BIND_ACTION_VIM_LOW] = "low",
+    [BIND_ACTION_VIM_SEMANTIC_LEFT] = "semantic-left",
+    [BIND_ACTION_VIM_SEMANTIC_RIGHT] = "semantic-right",
+    [BIND_ACTION_VIM_SEMANTIC_LEFT_END] = "semantic-left-end",
+    [BIND_ACTION_VIM_SEMANTIC_RIGHT_END] = "semantic-right-end",
+    [BIND_ACTION_VIM_WORD_LEFT] = "word-left",
+    [BIND_ACTION_VIM_WORD_RIGHT] = "word-right",
+    [BIND_ACTION_VIM_WORD_LEFT_END] = "word-left-end",
+    [BIND_ACTION_VIM_WORD_RIGHT_END] = "word-right-end",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3476,6 +3484,12 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_HIGH, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_h}}},
         {BIND_ACTION_VIM_MIDDLE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_m}}},
         {BIND_ACTION_VIM_LOW, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_l}}},
+        {BIND_ACTION_VIM_SEMANTIC_LEFT, m("none"), {{XKB_KEY_b}}},
+        {BIND_ACTION_VIM_SEMANTIC_RIGHT, m("none"), {{XKB_KEY_w}}},
+        {BIND_ACTION_VIM_SEMANTIC_RIGHT_END, m("none"), {{XKB_KEY_e}}},
+        {BIND_ACTION_VIM_WORD_LEFT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_b}}},
+        {BIND_ACTION_VIM_WORD_RIGHT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_w}}},
+        {BIND_ACTION_VIM_WORD_RIGHT_END, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_e}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);
