@@ -247,6 +247,12 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_CLEAR_SELECTION] = "clear-selection",
     [BIND_ACTION_VIM_COPY] = "copy",
     [BIND_ACTION_VIM_COPY_TO_END_OF_LINE] = "copy-to-end-of-line",
+    [BIND_ACTION_VIM_INLINE_SEARCH_FORWARD] = "inline-search-forward",
+    [BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD] = "inline-search-backward",
+    [BIND_ACTION_VIM_INLINE_SEARCH_FORWARD_SHORT] = "inline-search-forward-short",
+    [BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD_SHORT] = "inline-search-backward-short",
+    [BIND_ACTION_VIM_INLINE_SEARCH_NEXT] = "inline-search-next",
+    [BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS] = "inline-search-previous",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3530,6 +3536,12 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_CLEAR_SELECTION, m("none"), {{XKB_KEY_Escape}}},
         {BIND_ACTION_VIM_COPY, m("none"), {{XKB_KEY_y}}},
         {BIND_ACTION_VIM_COPY_TO_END_OF_LINE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_y}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_FORWARD, m("none"), {{XKB_KEY_f}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_f}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_FORWARD_SHORT, m("none"), {{XKB_KEY_t}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD_SHORT, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_t}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_NEXT, m("none"), {{XKB_KEY_semicolon}}},
+        {BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS, m("none"), {{XKB_KEY_comma}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);

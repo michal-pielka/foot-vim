@@ -635,6 +635,13 @@ struct terminal {
         bool active;
         bool reenable_ime;
         struct coord cursor;  /* Absolute grid coordinates */
+
+        struct {
+            char32_t character;  /* Last searched-for character */
+            bool backward;
+            bool stop_short;     /* Stop just before the match (t/T) */
+            bool char_pending;   /* Next typed character is the target */
+        } inline_search;
     } vim;
 
     struct wayland *wl;
