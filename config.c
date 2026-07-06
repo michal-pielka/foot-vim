@@ -214,6 +214,12 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_DOWN] = "down",
     [BIND_ACTION_VIM_LEFT] = "left",
     [BIND_ACTION_VIM_RIGHT] = "right",
+    [BIND_ACTION_VIM_FIRST] = "first",
+    [BIND_ACTION_VIM_LAST] = "last",
+    [BIND_ACTION_VIM_FIRST_OCCUPIED] = "first-occupied",
+    [BIND_ACTION_VIM_HIGH] = "high",
+    [BIND_ACTION_VIM_MIDDLE] = "middle",
+    [BIND_ACTION_VIM_LOW] = "low",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3462,6 +3468,14 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_LEFT, m("none"), {{XKB_KEY_Left}}},
         {BIND_ACTION_VIM_RIGHT, m("none"), {{XKB_KEY_l}}},
         {BIND_ACTION_VIM_RIGHT, m("none"), {{XKB_KEY_Right}}},
+        {BIND_ACTION_VIM_FIRST, m("none"), {{XKB_KEY_0}}},
+        {BIND_ACTION_VIM_FIRST, m("none"), {{XKB_KEY_Home}}},
+        {BIND_ACTION_VIM_LAST, m("none"), {{XKB_KEY_dollar}}},
+        {BIND_ACTION_VIM_LAST, m("none"), {{XKB_KEY_End}}},
+        {BIND_ACTION_VIM_FIRST_OCCUPIED, m("none"), {{XKB_KEY_asciicircum}}},
+        {BIND_ACTION_VIM_HIGH, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_h}}},
+        {BIND_ACTION_VIM_MIDDLE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_m}}},
+        {BIND_ACTION_VIM_LOW, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_l}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);
