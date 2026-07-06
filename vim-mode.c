@@ -68,6 +68,137 @@ view_sb(const struct vim_ctx *ctx)
     return abs_to_sb(ctx, ctx->grid->view);
 }
 
+/* Scroll the viewport, if needed, to make the cursor visible */
+static void
+scroll_to_cursor(struct vim_ctx *ctx)
+{
+    const int view = view_sb(ctx);
+
+    if (ctx->pos.row < view)
+        cmd_scrollback_up(ctx->term, view - ctx->pos.row);
+    else if (ctx->pos.row >= view + ctx->term->rows)
+        cmd_scrollback_down(
+            ctx->term, ctx->pos.row - (view + ctx->term->rows - 1));
+}
+
+static void
+apply_cursor(struct vim_ctx *ctx)
+{
+    struct terminal *term = ctx->term;
+
+    xassert(ctx->pos.row >= 0);
+    xassert(ctx->pos.row <= ctx->sb_max);
+    xassert(ctx->pos.col >= 0);
+    xassert(ctx->pos.col < term->cols);
+
+    term->vim.cursor.row = sb_to_abs(ctx, ctx->pos.row);
+    term->vim.cursor.col = ctx->pos.col;
+
+    scroll_to_cursor(ctx);
+    render_refresh(term);
+}
+
+static const struct row *
+row_at(const struct vim_ctx *ctx, int sb_row)
+{
+    const struct row *row = ctx->grid->rows[sb_to_abs(ctx, sb_row)];
+    xassert(row != NULL);
+    return row;
+}
+
+static bool
+is_spacer(const struct row *row, int col)
+{
+    return row->cells[col].wc >= CELL_SPACER;
+}
+
+/* Does the row continue onto the next row? */
+static bool
+row_wraps(const struct vim_ctx *ctx, int sb_row)
+{
+    return !row_at(ctx, sb_row)->linebreak;
+}
+
+/* True if 'pos' is on the last column of a row that wraps */
+static bool
+is_wrap(const struct vim_ctx *ctx, struct coord pos)
+{
+    return pos.col == ctx->term->cols - 1 && row_wraps(ctx, pos.row);
+}
+
+enum vim_direction {VIM_LEFT, VIM_RIGHT};
+
+/* Move 'pos' off wide character spacer cells: to the base character
+ * when moving left, to the last spacer when moving right */
+static struct coord
+expand_wide(const struct vim_ctx *ctx, struct coord pos,
+            enum vim_direction direction)
+{
+    const struct row *row = row_at(ctx, pos.row);
+
+    if (direction == VIM_LEFT) {
+        while (pos.col > 0 && is_spacer(row, pos.col))
+            pos.col--;
+    } else {
+        while (pos.col < ctx->term->cols - 1 && is_spacer(row, pos.col + 1))
+            pos.col++;
+    }
+
+    return pos;
+}
+
+static void
+motion_up(struct vim_ctx *ctx)
+{
+    if (ctx->pos.row > 0)
+        ctx->pos.row--;
+}
+
+static void
+motion_down(struct vim_ctx *ctx)
+{
+    if (ctx->pos.row < ctx->sb_max)
+        ctx->pos.row++;
+}
+
+static void
+motion_left(struct vim_ctx *ctx)
+{
+    ctx->pos = expand_wide(ctx, ctx->pos, VIM_LEFT);
+
+    if (ctx->pos.col == 0 && ctx->pos.row > 0 &&
+        row_wraps(ctx, ctx->pos.row - 1))
+    {
+        /* Wrap around to the end of the previous row */
+        ctx->pos.row--;
+        ctx->pos.col = ctx->term->cols - 1;
+    } else
+        ctx->pos.col = max(ctx->pos.col - 1, 0);
+}
+
+static void
+motion_right(struct vim_ctx *ctx)
+{
+    ctx->pos = expand_wide(ctx, ctx->pos, VIM_RIGHT);
+
+    if (is_wrap(ctx, ctx->pos)) {
+        if (ctx->pos.row < ctx->sb_max) {
+            ctx->pos.row++;
+            ctx->pos.col = 0;
+        }
+    } else
+        ctx->pos.col = min(ctx->pos.col + 1, ctx->term->cols - 1);
+}
+
+static bool
+motion(struct terminal *term, void (*fn)(struct vim_ctx *ctx))
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+    fn(&ctx);
+    apply_cursor(&ctx);
+    return true;
+}
+
 void
 vim_mode_begin(struct terminal *term)
 {
@@ -184,6 +315,18 @@ execute_binding(struct seat *seat, struct terminal *term,
         term_reset_view(term);
         vim_mode_cancel(term);
         return true;
+
+    case BIND_ACTION_VIM_UP:
+        return motion(term, &motion_up);
+
+    case BIND_ACTION_VIM_DOWN:
+        return motion(term, &motion_down);
+
+    case BIND_ACTION_VIM_LEFT:
+        return motion(term, &motion_left);
+
+    case BIND_ACTION_VIM_RIGHT:
+        return motion(term, &motion_right);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");

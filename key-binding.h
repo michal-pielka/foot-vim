@@ -116,6 +116,10 @@ enum bind_action_url {
 enum bind_action_vim {
     BIND_ACTION_VIM_NONE,
     BIND_ACTION_VIM_CANCEL,
+    BIND_ACTION_VIM_UP,
+    BIND_ACTION_VIM_DOWN,
+    BIND_ACTION_VIM_LEFT,
+    BIND_ACTION_VIM_RIGHT,
     BIND_ACTION_VIM_COUNT,
 };
 

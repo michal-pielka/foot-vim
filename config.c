@@ -210,6 +210,10 @@ static const char *const url_binding_action_map[] = {
 static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_NONE] = NULL,
     [BIND_ACTION_VIM_CANCEL] = "cancel",
+    [BIND_ACTION_VIM_UP] = "up",
+    [BIND_ACTION_VIM_DOWN] = "down",
+    [BIND_ACTION_VIM_LEFT] = "left",
+    [BIND_ACTION_VIM_RIGHT] = "right",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3450,6 +3454,14 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_CANCEL, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_space}}},
         {BIND_ACTION_VIM_CANCEL, m("none"), {{XKB_KEY_i}}},
         {BIND_ACTION_VIM_CANCEL, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_c}}},
+        {BIND_ACTION_VIM_UP, m("none"), {{XKB_KEY_k}}},
+        {BIND_ACTION_VIM_UP, m("none"), {{XKB_KEY_Up}}},
+        {BIND_ACTION_VIM_DOWN, m("none"), {{XKB_KEY_j}}},
+        {BIND_ACTION_VIM_DOWN, m("none"), {{XKB_KEY_Down}}},
+        {BIND_ACTION_VIM_LEFT, m("none"), {{XKB_KEY_h}}},
+        {BIND_ACTION_VIM_LEFT, m("none"), {{XKB_KEY_Left}}},
+        {BIND_ACTION_VIM_RIGHT, m("none"), {{XKB_KEY_l}}},
+        {BIND_ACTION_VIM_RIGHT, m("none"), {{XKB_KEY_Right}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);
