@@ -21,6 +21,7 @@
 #include "selection.h"
 #include "shm.h"
 #include "unicode-mode.h"
+#include "vim-mode.h"
 #include "util.h"
 #include "xmalloc.h"
 
@@ -533,6 +534,51 @@ search_find_next(struct terminal *term, enum search_direction direction)
         selection_cancel(term);
     }
 #undef ROW_DEC
+}
+
+bool
+search_find_last_query(struct terminal *term, struct coord abs_start,
+                       enum search_direction direction, struct range *match)
+{
+    xassert(!term->is_searching);
+
+    if (term->search.last.buf == NULL || term->search.last.len == 0)
+        return false;
+
+    /* find_next(), and matches_cell(), match against the current
+     * search buffer - temporarily point it at the last query */
+    xassert(term->search.buf == NULL);
+    xassert(term->search.len == 0);
+    term->search.buf = term->search.last.buf;
+    term->search.len = term->search.last.len;
+
+    /* Search the entire scrollback, wrapping around at the ends */
+    struct coord end = abs_start;
+    switch (direction) {
+    case SEARCH_FORWARD:
+        if (--end.col < 0) {
+            end.col = term->cols - 1;
+            end.row += term->grid->num_rows - 1;
+            end.row &= term->grid->num_rows - 1;
+        }
+        break;
+
+    case SEARCH_BACKWARD:
+    case SEARCH_BACKWARD_SAME_POSITION:
+        if (++end.col >= term->cols) {
+            end.col = 0;
+            end.row++;
+            end.row &= term->grid->num_rows - 1;
+        }
+        break;
+    }
+
+    const bool found = find_next(term, direction, abs_start, end, match);
+
+    term->search.buf = NULL;
+    term->search.len = 0;
+
+    return found;
 }
 
 struct search_match_iterator
@@ -1137,8 +1183,19 @@ execute_binding(struct seat *seat, struct terminal *term,
         return true;
 
     case BIND_ACTION_SEARCH_COMMIT:
-        selection_finalize(seat, term, serial);
-        search_cancel_keep_selection(term);
+        if (vim_mode_is_active(term)) {
+            /* Move the vim cursor to the match, instead of keeping
+             * the selection */
+            const struct coord match_start = term->search.match;
+            const size_t match_len = term->search.match_len;
+
+            search_cancel(term);
+            if (match_len > 0)
+                vim_mode_goto(term, match_start);
+        } else {
+            selection_finalize(seat, term, serial);
+            search_cancel_keep_selection(term);
+        }
         return true;
 
     case BIND_ACTION_SEARCH_FIND_PREV:
