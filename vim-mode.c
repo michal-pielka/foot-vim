@@ -7,6 +7,7 @@
 #include "commands.h"
 #include "config.h"
 #include "grid.h"
+#include "misc.h"
 #include "render.h"
 #include "selection.h"
 #include "util.h"
@@ -230,6 +231,190 @@ motion_right(struct vim_ctx *ctx)
         }
     } else
         ctx->pos.col = min(ctx->pos.col + 1, ctx->term->cols - 1);
+}
+
+/* Is 'pos' at a grid corner, in the direction of movement? */
+static bool
+is_boundary(const struct vim_ctx *ctx, struct coord pos,
+            enum vim_direction direction)
+{
+    if (direction == VIM_LEFT)
+        return pos.row <= 0 && pos.col == 0;
+    return pos.row >= ctx->sb_max && pos.col + 1 >= ctx->term->cols;
+}
+
+/* One cell in the direction of movement, crossing row boundaries, and
+ * clamped at the grid corners */
+static struct coord
+advance(const struct vim_ctx *ctx, struct coord pos,
+        enum vim_direction direction)
+{
+    if (direction == VIM_LEFT) {
+        if (--pos.col < 0) {
+            if (pos.row > 0) {
+                pos.row--;
+                pos.col = ctx->term->cols - 1;
+            } else
+                pos.col = 0;
+        }
+    } else {
+        if (++pos.col >= ctx->term->cols) {
+            if (pos.row < ctx->sb_max) {
+                pos.row++;
+                pos.col = 0;
+            } else
+                pos.col = ctx->term->cols - 1;
+        }
+    }
+
+    return pos;
+}
+
+/* Expand 'point' to the word boundary, using the configured word
+ * delimiters. Only expands within words - delimiters and whitespace
+ * are boundaries of their own */
+static struct coord
+expand_semantic(const struct vim_ctx *ctx, struct coord point,
+                enum vim_direction direction)
+{
+    const struct row *row = row_at(ctx, point.row);
+
+    if (!is_spacer(row, point.col) &&
+        !isword(base_char(ctx, row, point.col), false,
+                ctx->term->conf->word_delimiters))
+    {
+        return point;
+    }
+
+    struct coord abs = {point.col, sb_to_abs(ctx, point.row)};
+    if (direction == VIM_LEFT)
+        selection_find_word_boundary_left(ctx->term, &abs, false);
+    else
+        selection_find_word_boundary_right(ctx->term, &abs, false, true);
+
+    return (struct coord){abs.col, abs_to_sb(ctx, abs.row)};
+}
+
+/* Move by delimiter separated word, like w/b/e/ge in vi. 'side' is
+ * the side of the word to stop at: VIM_LEFT for the beginning of the
+ * word, VIM_RIGHT for the end */
+static void
+motion_semantic(struct vim_ctx *ctx, enum vim_direction direction,
+                enum vim_direction side)
+{
+    struct coord point = ctx->pos;
+
+    /* Move to word boundary */
+    if (direction != side && !is_boundary(ctx, point, direction))
+        point = expand_semantic(ctx, point, direction);
+
+    /* Make sure we jump above wide chars */
+    point = expand_wide(ctx, point, direction);
+
+    /* Skip whitespace */
+    struct coord next = advance(ctx, point, direction);
+    while (!is_boundary(ctx, point, direction) && is_space(ctx, next)) {
+        point = next;
+        next = advance(ctx, point, direction);
+    }
+
+    /* Assure minimum movement of one cell */
+    if (!is_boundary(ctx, point, direction)) {
+        point = advance(ctx, point, direction);
+
+        /* Skip over wide cell spacers */
+        if (direction == VIM_LEFT)
+            point = expand_wide(ctx, point, direction);
+    }
+
+    /* Move to word boundary */
+    if (direction == side && !is_boundary(ctx, point, direction))
+        point = expand_semantic(ctx, point, direction);
+
+    ctx->pos = point;
+}
+
+/* Move by whitespace separated word, like W/B/E/gE in vi */
+static void
+motion_word(struct vim_ctx *ctx, enum vim_direction direction,
+            enum vim_direction side)
+{
+    /* Make sure we jump above wide chars */
+    struct coord point = expand_wide(ctx, ctx->pos, direction);
+
+    if (direction == side) {
+        /* Skip whitespace until right before a word */
+        struct coord next = advance(ctx, point, direction);
+        while (!is_boundary(ctx, point, direction) && is_space(ctx, next)) {
+            point = next;
+            next = advance(ctx, point, direction);
+        }
+
+        /* Skip non-whitespace until right inside word boundary */
+        next = advance(ctx, point, direction);
+        while (!is_boundary(ctx, point, direction) && !is_space(ctx, next)) {
+            point = next;
+            next = advance(ctx, point, direction);
+        }
+    } else {
+        /* Skip non-whitespace until just beyond word */
+        while (!is_boundary(ctx, point, direction) && !is_space(ctx, point))
+            point = advance(ctx, point, direction);
+
+        /* Skip whitespace until right inside word boundary */
+        while (!is_boundary(ctx, point, direction) && is_space(ctx, point))
+            point = advance(ctx, point, direction);
+    }
+
+    ctx->pos = point;
+}
+
+static void
+motion_semantic_left(struct vim_ctx *ctx)
+{
+    motion_semantic(ctx, VIM_LEFT, VIM_LEFT);
+}
+
+static void
+motion_semantic_right(struct vim_ctx *ctx)
+{
+    motion_semantic(ctx, VIM_RIGHT, VIM_LEFT);
+}
+
+static void
+motion_semantic_left_end(struct vim_ctx *ctx)
+{
+    motion_semantic(ctx, VIM_LEFT, VIM_RIGHT);
+}
+
+static void
+motion_semantic_right_end(struct vim_ctx *ctx)
+{
+    motion_semantic(ctx, VIM_RIGHT, VIM_RIGHT);
+}
+
+static void
+motion_word_left(struct vim_ctx *ctx)
+{
+    motion_word(ctx, VIM_LEFT, VIM_LEFT);
+}
+
+static void
+motion_word_right(struct vim_ctx *ctx)
+{
+    motion_word(ctx, VIM_RIGHT, VIM_LEFT);
+}
+
+static void
+motion_word_left_end(struct vim_ctx *ctx)
+{
+    motion_word(ctx, VIM_LEFT, VIM_RIGHT);
+}
+
+static void
+motion_word_right_end(struct vim_ctx *ctx)
+{
+    motion_word(ctx, VIM_RIGHT, VIM_RIGHT);
 }
 
 /* First column, or beginning of the logical line when already there */
@@ -510,6 +695,30 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_VIM_LOW:
         return motion(term, &motion_low);
+
+    case BIND_ACTION_VIM_SEMANTIC_LEFT:
+        return motion(term, &motion_semantic_left);
+
+    case BIND_ACTION_VIM_SEMANTIC_RIGHT:
+        return motion(term, &motion_semantic_right);
+
+    case BIND_ACTION_VIM_SEMANTIC_LEFT_END:
+        return motion(term, &motion_semantic_left_end);
+
+    case BIND_ACTION_VIM_SEMANTIC_RIGHT_END:
+        return motion(term, &motion_semantic_right_end);
+
+    case BIND_ACTION_VIM_WORD_LEFT:
+        return motion(term, &motion_word_left);
+
+    case BIND_ACTION_VIM_WORD_RIGHT:
+        return motion(term, &motion_word_right);
+
+    case BIND_ACTION_VIM_WORD_LEFT_END:
+        return motion(term, &motion_word_left_end);
+
+    case BIND_ACTION_VIM_WORD_RIGHT_END:
+        return motion(term, &motion_word_right_end);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
