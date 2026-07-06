@@ -638,6 +638,74 @@ motion_low(struct vim_ctx *ctx)
     move_to_view_row(ctx, ctx->term->rows - 1);
 }
 
+/* Scroll the viewport 'lines' rows (negative is up), dragging the
+ * cursor along to keep its on-screen position */
+static bool
+scroll_action(struct terminal *term, int lines)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    const int row = min(max(ctx.pos.row + lines, 0), ctx.sb_max);
+    const int col = first_occupied_in_row(&ctx, row);
+    ctx.pos = (struct coord){col >= 0 ? col : 0, row};
+
+    if (lines < 0)
+        cmd_scrollback_up(term, -lines);
+    else
+        cmd_scrollback_down(term, lines);
+
+    /* The viewport may not have been able to scroll the full amount */
+    const int view = view_sb(&ctx);
+    ctx.pos.row = min(max(ctx.pos.row, view), view + term->rows - 1);
+
+    apply_cursor(&ctx);
+    return true;
+}
+
+static bool
+scroll_home_action(struct terminal *term)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    cmd_scrollback_up(term, ctx.grid->num_rows);
+
+    ctx.pos = (struct coord){0, 0};
+    motion_first_occupied(&ctx);
+    apply_cursor(&ctx);
+    return true;
+}
+
+static bool
+scroll_end_action(struct terminal *term)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    cmd_scrollback_down(term, ctx.grid->num_rows);
+
+    ctx.pos = (struct coord){0, ctx.sb_max};
+
+    /* Twice, to jump across soft line breaks */
+    motion_first_occupied(&ctx);
+    motion_first_occupied(&ctx);
+    apply_cursor(&ctx);
+    return true;
+}
+
+static bool
+center_on_cursor(struct terminal *term)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+    const int target_view = ctx.pos.row - (term->rows / 2 - 1);
+    const int delta = view_sb(&ctx) - target_view;
+
+    if (delta > 0)
+        cmd_scrollback_up(term, delta);
+    else if (delta < 0)
+        cmd_scrollback_down(term, -delta);
+
+    return true;
+}
+
 static bool
 motion(struct terminal *term, void (*fn)(struct vim_ctx *ctx))
 {
@@ -826,6 +894,36 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_VIM_PARAGRAPH_DOWN:
         return motion(term, &motion_paragraph_down);
+
+    case BIND_ACTION_VIM_SCROLLBACK_UP_PAGE:
+        return scroll_action(term, -term->rows);
+
+    case BIND_ACTION_VIM_SCROLLBACK_UP_HALF_PAGE:
+        return scroll_action(term, -max(term->rows / 2, 1));
+
+    case BIND_ACTION_VIM_SCROLLBACK_UP_LINE:
+        /* vim_mode_view_changed() drags the cursor along */
+        cmd_scrollback_up(term, 1);
+        return true;
+
+    case BIND_ACTION_VIM_SCROLLBACK_DOWN_PAGE:
+        return scroll_action(term, term->rows);
+
+    case BIND_ACTION_VIM_SCROLLBACK_DOWN_HALF_PAGE:
+        return scroll_action(term, max(term->rows / 2, 1));
+
+    case BIND_ACTION_VIM_SCROLLBACK_DOWN_LINE:
+        cmd_scrollback_down(term, 1);
+        return true;
+
+    case BIND_ACTION_VIM_SCROLLBACK_HOME:
+        return scroll_home_action(term);
+
+    case BIND_ACTION_VIM_SCROLLBACK_END:
+        return scroll_end_action(term);
+
+    case BIND_ACTION_VIM_CENTER_CURSOR:
+        return center_on_cursor(term);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");

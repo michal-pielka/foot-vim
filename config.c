@@ -231,6 +231,15 @@ static const char *const vim_binding_action_map[] = {
     [BIND_ACTION_VIM_BRACKET] = "bracket",
     [BIND_ACTION_VIM_PARAGRAPH_UP] = "paragraph-up",
     [BIND_ACTION_VIM_PARAGRAPH_DOWN] = "paragraph-down",
+    [BIND_ACTION_VIM_SCROLLBACK_UP_PAGE] = "scrollback-up-page",
+    [BIND_ACTION_VIM_SCROLLBACK_UP_HALF_PAGE] = "scrollback-up-half-page",
+    [BIND_ACTION_VIM_SCROLLBACK_UP_LINE] = "scrollback-up-line",
+    [BIND_ACTION_VIM_SCROLLBACK_DOWN_PAGE] = "scrollback-down-page",
+    [BIND_ACTION_VIM_SCROLLBACK_DOWN_HALF_PAGE] = "scrollback-down-half-page",
+    [BIND_ACTION_VIM_SCROLLBACK_DOWN_LINE] = "scrollback-down-line",
+    [BIND_ACTION_VIM_SCROLLBACK_HOME] = "scrollback-home",
+    [BIND_ACTION_VIM_SCROLLBACK_END] = "scrollback-end",
+    [BIND_ACTION_VIM_CENTER_CURSOR] = "center-cursor",
 };
 
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
@@ -3496,6 +3505,17 @@ add_default_vim_bindings(struct config *conf)
         {BIND_ACTION_VIM_BRACKET, m("none"), {{XKB_KEY_percent}}},
         {BIND_ACTION_VIM_PARAGRAPH_UP, m("none"), {{XKB_KEY_braceleft}}},
         {BIND_ACTION_VIM_PARAGRAPH_DOWN, m("none"), {{XKB_KEY_braceright}}},
+        {BIND_ACTION_VIM_SCROLLBACK_UP_PAGE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_b}}},
+        {BIND_ACTION_VIM_SCROLLBACK_UP_PAGE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_Prior}}},
+        {BIND_ACTION_VIM_SCROLLBACK_UP_HALF_PAGE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_u}}},
+        {BIND_ACTION_VIM_SCROLLBACK_UP_LINE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_y}}},
+        {BIND_ACTION_VIM_SCROLLBACK_DOWN_PAGE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_f}}},
+        {BIND_ACTION_VIM_SCROLLBACK_DOWN_PAGE, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_Next}}},
+        {BIND_ACTION_VIM_SCROLLBACK_DOWN_HALF_PAGE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_d}}},
+        {BIND_ACTION_VIM_SCROLLBACK_DOWN_LINE, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_e}}},
+        {BIND_ACTION_VIM_SCROLLBACK_HOME, m("none"), {{XKB_KEY_g}}},
+        {BIND_ACTION_VIM_SCROLLBACK_END, m(XKB_MOD_NAME_SHIFT), {{XKB_KEY_g}}},
+        {BIND_ACTION_VIM_CENTER_CURSOR, m("none"), {{XKB_KEY_z}}},
     };
 
     conf->bindings.vim.count = ALEN(bindings);
