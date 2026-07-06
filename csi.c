@@ -19,6 +19,7 @@
 #include "grid.h"
 #include "selection.h"
 #include "sixel.h"
+#include "vim-mode.h"
 #include "util.h"
 #include "version.h"
 #include "vt.h"
@@ -500,6 +501,7 @@ decset_decrst(struct terminal *term, unsigned param, bool enable)
     case 1049:
         if (enable && term->grid != &term->alt) {
             selection_cancel(term);
+            vim_mode_cancel(term);
 
             if (param == 1049)
                 term_save_cursor(term);
@@ -518,6 +520,7 @@ decset_decrst(struct terminal *term, unsigned param, bool enable)
 
         else if (!enable && term->grid == &term->alt) {
             selection_cancel(term);
+            vim_mode_cancel(term);
 
             term->grid = &term->normal;
 
