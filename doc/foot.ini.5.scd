@@ -1675,6 +1675,11 @@ copy text using the keyboard. Enter it with *vim-mode-start* (see
 **key-bindings**). While active, all keyboard input is consumed by
 vim mode.
 
+While vim mode is active, the cursor's position within the
+scrollback is displayed in the top right corner, as
+_[lines-above-the-bottom/total-lines]_. It is colored using
+*[colors].scrollback-indicator*.
+
 *cancel*
 	Exits vim mode, and scrolls the view back to the bottom. Default:
 	_Control+Shift+space i Control+c_.

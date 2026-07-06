@@ -80,7 +80,8 @@
   content and the scrollback, select and copy text, using vi-like key
   bindings. Enter it with `vim-mode-start` (default:
   `ctrl`+`shift`+`space`), and customize it in the new
-  `[vim-bindings]` section.
+  `[vim-bindings]` section. While active, the cursor position within
+  the scrollback is shown in the top right corner.
 
 [2368]: https://codeberg.org/dnkl/foot/issues/2368
 

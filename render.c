@@ -3012,13 +3012,118 @@ render_csd(struct terminal *term)
     render_csd_title(term, &infos[CSD_SURF_TITLE], bufs[CSD_SURF_TITLE]);
 }
 
+/*
+ * Indicate vim mode by showing the cursor's position in the top right
+ * corner, like Alacritty: [<lines above the bottom-most row>/<total>]
+ */
+static void
+render_vim_position(struct terminal *term)
+{
+    struct wl_window *win = term->window;
+    const struct grid *grid = term->grid;
+
+    if (win->scrollback_indicator.surface.surf == NULL) {
+        if (!wayl_win_subsurface_new(
+                win, &win->scrollback_indicator, false))
+        {
+            LOG_ERR("failed to create scrollback indicator surface");
+            return;
+        }
+    }
+
+    /* Cursor position within the grid (scrollback + screen), counted
+     * from the bottom-most screen row */
+    const int sb_start = grid_sb_start_ignore_uninitialized(grid, term->rows);
+    const int total = grid_row_abs_to_sb_precalc_sb_start(
+        grid, sb_start, (grid->offset + term->rows - 1) & (grid->num_rows - 1));
+    const int cursor_pos = min(
+        grid_row_abs_to_sb_precalc_sb_start(
+            grid, sb_start, term->vim.cursor.row & (grid->num_rows - 1)),
+        total);
+
+    char pos_str[64];
+    snprintf(pos_str, sizeof(pos_str), "[%d/%d]", total - cursor_pos, total);
+
+    char32_t text[64];
+    mbstoc32(text, pos_str, ALEN(text));
+    const int cell_count = c32len(text);
+
+    const float scale = term->scale;
+    const int margin = (int)roundf(3. * scale);
+
+    int width = margin + cell_count * term->cell_width + margin;
+    int height = margin + term->cell_height + margin;
+
+    width = roundf(scale * ceilf(width / scale));
+    height = roundf(scale * ceilf(height / scale));
+
+    const int surf_top = term->cell_height - margin;
+    int x = term->width - margin - width;
+    int y = term->margins.top + surf_top;
+
+    x = roundf(scale * ceilf(x / scale));
+    y = roundf(scale * ceilf(y / scale));
+
+    /* Do not render anything if it would obscure the vim cursor */
+    {
+        const int cursor_view_row =
+            (term->vim.cursor.row - grid->view + grid->num_rows) &
+            (grid->num_rows - 1);
+        const int covered_row_start = surf_top / term->cell_height;
+        const int covered_row_end =
+            (surf_top + height - 1) / term->cell_height;
+        const int covered_col_start =
+            (x - term->margins.left) / term->cell_width;
+
+        if (cursor_view_row >= covered_row_start &&
+            cursor_view_row <= covered_row_end &&
+            term->vim.cursor.col >= covered_col_start)
+        {
+            wl_surface_attach(win->scrollback_indicator.surface.surf, NULL, 0, 0);
+            wl_surface_commit(win->scrollback_indicator.surface.surf);
+            return;
+        }
+    }
+
+    if (y + height > term->height) {
+        wl_surface_attach(win->scrollback_indicator.surface.surf, NULL, 0, 0);
+        wl_surface_commit(win->scrollback_indicator.surface.surf);
+        return;
+    }
+
+    struct buffer_chain *chain = term->render.chains.scrollback_indicator;
+    struct buffer *buf = shm_get_buffer(chain, width, height);
+
+    wl_subsurface_set_position(
+        win->scrollback_indicator.sub, roundf(x / scale), roundf(y / scale));
+
+    uint32_t fg = term->colors.table[0];
+    uint32_t bg = term->colors.table[8 + 4];
+    if (term->conf->colors_dark.use_custom.scrollback_indicator) {
+        fg = term->conf->colors_dark.scrollback_indicator.fg;
+        bg = term->conf->colors_dark.scrollback_indicator.bg;
+    }
+
+    render_osd(
+        term,
+        &win->scrollback_indicator,
+        term->fonts[0], buf, text,
+        fg, 0xffu << 24 | bg,
+        width - margin - cell_count * term->cell_width);
+}
+
 static void
 render_scrollback_position(struct terminal *term)
 {
+    struct wl_window *win = term->window;
+
+    if (vim_mode_is_active(term)) {
+        render_vim_position(term);
+        return;
+    }
+
     if (term->conf->scrollback.indicator.position == SCROLLBACK_INDICATOR_POSITION_NONE)
         return;
-
-    struct wl_window *win = term->window;
 
     if (term->grid->view == term->grid->offset) {
         if (win->scrollback_indicator.surface.surf != NULL)
