@@ -42,6 +42,7 @@
 #include "sixel.h"
 #include "srgb.h"
 #include "url-mode.h"
+#include "vim-mode.h"
 #include "util.h"
 #include "xmalloc.h"
 
@@ -2179,6 +2180,35 @@ render_overlay(struct terminal *term)
     term->render.last_overlay_style = style;
 }
 
+/*
+ * View-relative coordinates of the cursor to render: the vim mode
+ * cursor when vim mode is active, the terminal cursor otherwise.
+ *
+ * Returns {-1, -1} when the cursor is hidden. A cursor outside the
+ * viewport results in a row >= term->rows, and is thus never matched
+ * against any rendered row.
+ */
+static struct coord
+cursor_view_coords(const struct terminal *term)
+{
+    struct coord cursor = {-1, -1};
+
+    if (unlikely(term->vim.active)) {
+        /* The vim cursor is in absolute coordinates */
+        cursor = term->vim.cursor;
+        cursor.row -= term->grid->view;
+        cursor.row &= term->grid->num_rows - 1;
+    } else if (!term->hide_cursor) {
+        /* Translate offset-relative cursor row to view-relative */
+        cursor = term->grid->cursor.point;
+        cursor.row += term->grid->offset;
+        cursor.row -= term->grid->view;
+        cursor.row &= term->grid->num_rows - 1;
+    }
+
+    return cursor;
+}
+
 int
 render_worker_thread(void *_ctx)
 {
@@ -2208,14 +2238,7 @@ render_worker_thread(void *_ctx)
 
         bool frame_done = false;
 
-        /* Translate offset-relative cursor row to view-relative */
-        struct coord cursor = {-1, -1};
-        if (!term->hide_cursor) {
-            cursor = term->grid->cursor.point;
-            cursor.row += term->grid->offset;
-            cursor.row -= term->grid->view;
-            cursor.row &= term->grid->num_rows - 1;
-        }
+        struct coord cursor = cursor_view_coords(term);
 
         while (!frame_done) {
             mtx_lock(lock);
@@ -3291,6 +3314,24 @@ reapply_old_damage(struct terminal *term, struct buffer *new, struct buffer *old
 }
 
 static void
+cursor_row_and_col(struct terminal *term, struct row **row, int *col)
+{
+    if (unlikely(term->vim.active)) {
+        *row = term->grid->rows[term->vim.cursor.row & (term->grid->num_rows - 1)];
+        *col = term->vim.cursor.col;
+    } else {
+        *row = grid_row(term->grid, term->grid->cursor.point.row);
+        *col = term->grid->cursor.point.col;
+    }
+}
+
+static bool
+cursor_is_hidden(const struct terminal *term)
+{
+    return term->hide_cursor && !term->vim.active;
+}
+
+static void
 dirty_old_cursor(struct terminal *term)
 {
     if (term->render.last_cursor.row != NULL && !term->render.last_cursor.hidden) {
@@ -3301,21 +3342,26 @@ dirty_old_cursor(struct terminal *term)
     }
 
     /* Remember current cursor position, for the next frame */
-    term->render.last_cursor.row = grid_row(term->grid, term->grid->cursor.point.row);
-    term->render.last_cursor.col = term->grid->cursor.point.col;
-    term->render.last_cursor.hidden = term->hide_cursor;
+    struct row *row;
+    int col;
+    cursor_row_and_col(term, &row, &col);
+
+    term->render.last_cursor.row = row;
+    term->render.last_cursor.col = col;
+    term->render.last_cursor.hidden = cursor_is_hidden(term);
 }
 
 static void
 dirty_cursor(struct terminal *term)
 {
-    if (term->hide_cursor)
+    if (cursor_is_hidden(term))
         return;
 
-    const struct coord *cursor = &term->grid->cursor.point;
+    struct row *row;
+    int col;
+    cursor_row_and_col(term, &row, &col);
 
-    struct row *row = grid_row(term->grid, cursor->row);
-    struct cell *cell = &row->cells[cursor->col];
+    struct cell *cell = &row->cells[col];
     cell->attrs.clean = 0;
     row->dirty = true;
 }
@@ -3446,15 +3492,7 @@ grid_render(struct terminal *term)
      */
     selection_dirty_cells(term);
 
-    /* Translate offset-relative row to view-relative, unless cursor
-     * is hidden, then we just set it to -1 */
-    struct coord cursor = {-1, -1};
-    if (!term->hide_cursor) {
-        cursor = term->grid->cursor.point;
-        cursor.row += term->grid->offset;
-        cursor.row -= term->grid->view;
-        cursor.row &= term->grid->num_rows - 1;
-    }
+    struct coord cursor = cursor_view_coords(term);
 
     if (term->conf->tweak.overflowing_glyphs) {
         /*
@@ -4419,6 +4457,8 @@ delayed_reflow_of_normal_grid(struct terminal *term)
     tll_free(term->normal.scroll_damage);
     sixel_reflow_grid(term, &term->normal);
 
+    vim_mode_resized(term);
+
     if (term->grid == &term->normal) {
         term_damage_view(term);
         render_refresh(term);
@@ -4895,15 +4935,19 @@ render_resize(struct terminal *term, int width, int height, uint8_t opts)
             term_ptmx_resume(term);
         }
 
-        struct coord *const tracking_points[] = {
-            &term->selection.coords.start,
-            &term->selection.coords.end,
-        };
+        struct coord *tracking_points[3];
+        size_t tracking_count = 0;
+
+        if (term->selection.coords.end.row >= 0) {
+            tracking_points[tracking_count++] = &term->selection.coords.start;
+            tracking_points[tracking_count++] = &term->selection.coords.end;
+        }
+        if (term->vim.active && term->grid == &term->normal)
+            tracking_points[tracking_count++] = &term->vim.cursor;
 
         grid_resize_and_reflow(
             &term->normal, term, new_normal_grid_rows, new_cols, old_normal_rows, new_rows,
-            term->selection.coords.end.row >= 0 ? ALEN(tracking_points) : 0,
-            tracking_points);
+            tracking_count, tracking_points);
     }
 
     grid_resize_without_reflow(
@@ -4932,6 +4976,8 @@ render_resize(struct terminal *term, int width, int height, uint8_t opts)
     {
         term->scroll_region.end = term->rows;
     }
+
+    vim_mode_resized(term);
 
     term->render.last_cursor.row = NULL;
 

@@ -38,6 +38,7 @@
 #include "tokenize.h"
 #include "unicode-mode.h"
 #include "url-mode.h"
+#include "vim-mode.h"
 #include "util.h"
 #include "vt.h"
 #include "xkbcommon-vmod.h"
@@ -451,6 +452,10 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     case BIND_ACTION_UNICODE_INPUT:
         unicode_mode_activate(term);
+        return true;
+
+    case BIND_ACTION_VIM_MODE_START:
+        vim_mode_begin(term);
         return true;
 
     case BIND_ACTION_QUIT:
@@ -1667,6 +1672,18 @@ key_press_release(struct seat *seat, struct terminal *term, uint32_t serial,
                 start_repeater(seat, key);
 
             urls_input(
+                seat, term, bindings, key, sym, mods, consumed,
+                raw_syms, raw_count, serial);
+        }
+        return;
+    }
+
+    else if (vim_mode_is_active(term)) {
+        if (pressed) {
+            if (should_repeat)
+                start_repeater(seat, key);
+
+            vim_mode_input(
                 seat, term, bindings, key, sym, mods, consumed,
                 raw_syms, raw_count, serial);
         }

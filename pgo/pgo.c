@@ -200,6 +200,9 @@ void reaper_add(struct reaper *reaper, pid_t pid, reaper_cb cb, void *cb_data) {
 void reaper_del(struct reaper *reaper, pid_t pid) {}
 
 void urls_reset(struct terminal *term) {}
+void vim_mode_cancel(struct terminal *term) {}
+void vim_mode_view_changed(struct terminal *term) {}
+void vim_mode_resized(struct terminal *term) {}
 
 void shm_unref(struct buffer *buf) {}
 void shm_chain_free(struct buffer_chain *chain) {}

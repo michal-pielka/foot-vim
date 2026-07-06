@@ -147,6 +147,7 @@ static const char *const binding_action_map[] = {
     [BIND_ACTION_THEME_SWITCH_DARK] = "color-theme-switch-dark",
     [BIND_ACTION_THEME_SWITCH_LIGHT] = "color-theme-switch-light",
     [BIND_ACTION_THEME_TOGGLE] = "color-theme-toggle",
+    [BIND_ACTION_VIM_MODE_START] = "vim-mode-start",
 
     /* Mouse-specific actions */
     [BIND_ACTION_SCROLLBACK_UP_MOUSE] = "scrollback-up-mouse",
@@ -206,12 +207,19 @@ static const char *const url_binding_action_map[] = {
     [BIND_ACTION_URL_TOGGLE_URL_ON_JUMP_LABEL] = "toggle-url-visible",
 };
 
+static const char *const vim_binding_action_map[] = {
+    [BIND_ACTION_VIM_NONE] = NULL,
+    [BIND_ACTION_VIM_CANCEL] = "cancel",
+};
+
 static_assert(ALEN(binding_action_map) == BIND_ACTION_COUNT,
               "binding action map size mismatch");
 static_assert(ALEN(search_binding_action_map) == BIND_ACTION_SEARCH_COUNT,
               "search binding action map size mismatch");
 static_assert(ALEN(url_binding_action_map) == BIND_ACTION_URL_COUNT,
               "URL binding action map size mismatch");
+static_assert(ALEN(vim_binding_action_map) == BIND_ACTION_VIM_COUNT,
+              "vim binding action map size mismatch");
 
 struct context {
     struct config *conf;
@@ -2496,6 +2504,15 @@ parse_section_url_bindings(struct context *ctx)
         &ctx->conf->bindings.url);
 }
 
+static bool
+parse_section_vim_bindings(struct context *ctx)
+{
+    return parse_key_binding_section(
+        ctx,
+        BIND_ACTION_VIM_COUNT, vim_binding_action_map,
+        &ctx->conf->bindings.vim);
+}
+
 static bool NOINLINE
 resolve_key_binding_collisions(struct config *conf, const char *section_name,
                                const char *const action_map[],
@@ -3057,6 +3074,7 @@ enum section {
     SECTION_KEY_BINDINGS,
     SECTION_SEARCH_BINDINGS,
     SECTION_URL_BINDINGS,
+    SECTION_VIM_BINDINGS,
     SECTION_MOUSE_BINDINGS,
     SECTION_TEXT_BINDINGS,
     SECTION_ENVIRONMENT,
@@ -3093,6 +3111,7 @@ static const struct {
     [SECTION_KEY_BINDINGS] =    {&parse_section_key_bindings, "key-bindings"},
     [SECTION_SEARCH_BINDINGS] = {&parse_section_search_bindings, "search-bindings"},
     [SECTION_URL_BINDINGS] =    {&parse_section_url_bindings, "url-bindings"},
+    [SECTION_VIM_BINDINGS] =    {&parse_section_vim_bindings, "vim-bindings"},
     [SECTION_MOUSE_BINDINGS] =  {&parse_section_mouse_bindings, "mouse-bindings"},
     [SECTION_TEXT_BINDINGS] =   {&parse_section_text_bindings, "text-bindings"},
     [SECTION_ENVIRONMENT] =     {&parse_section_environment, "environment"},
@@ -3347,6 +3366,7 @@ add_default_key_bindings(struct config *conf)
         {BIND_ACTION_UNICODE_INPUT, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_u}}},
         {BIND_ACTION_PROMPT_PREV, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_z}}},
         {BIND_ACTION_PROMPT_NEXT, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_x}}},
+        {BIND_ACTION_VIM_MODE_START, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_space}}},
     };
 
     conf->bindings.key.count = ALEN(bindings);
@@ -3421,6 +3441,19 @@ add_default_url_bindings(struct config *conf)
 
     conf->bindings.url.count = ALEN(bindings);
     conf->bindings.url.arr = xmemdup(bindings, sizeof(bindings));
+}
+
+static void
+add_default_vim_bindings(struct config *conf)
+{
+    const struct config_key_binding bindings[] = {
+        {BIND_ACTION_VIM_CANCEL, m(XKB_MOD_NAME_CTRL "+" XKB_MOD_NAME_SHIFT), {{XKB_KEY_space}}},
+        {BIND_ACTION_VIM_CANCEL, m("none"), {{XKB_KEY_i}}},
+        {BIND_ACTION_VIM_CANCEL, m(XKB_MOD_NAME_CTRL), {{XKB_KEY_c}}},
+    };
+
+    conf->bindings.vim.count = ALEN(bindings);
+    conf->bindings.vim.arr = xmemdup(bindings, sizeof(bindings));
 }
 
 static void
@@ -3709,6 +3742,7 @@ config_load(struct config *conf, const char *conf_path,
     add_default_key_bindings(conf);
     add_default_search_bindings(conf);
     add_default_url_bindings(conf);
+    add_default_vim_bindings(conf);
     add_default_mouse_bindings(conf);
 
     struct config_file conf_file = {.path = NULL, .fd = -1};
@@ -3770,6 +3804,8 @@ config_load(struct config *conf, const char *conf_path,
         xassert(conf->bindings.search.arr[i].action != BIND_ACTION_SEARCH_NONE);
     for (size_t i = 0; i < conf->bindings.url.count; i++)
         xassert(conf->bindings.url.arr[i].action != BIND_ACTION_URL_NONE);
+    for (size_t i = 0; i < conf->bindings.vim.count; i++)
+        xassert(conf->bindings.vim.arr[i].action != BIND_ACTION_VIM_NONE);
 #endif
 
     free(conf_file.path);
@@ -3848,6 +3884,9 @@ config_override_apply(struct config *conf, config_override_t *overrides,
         resolve_key_binding_collisions(
             conf, section_info[SECTION_URL_BINDINGS].name,
             url_binding_action_map, &conf->bindings.url, KEY_BINDING) &&
+        resolve_key_binding_collisions(
+            conf, section_info[SECTION_VIM_BINDINGS].name,
+            vim_binding_action_map, &conf->bindings.vim, KEY_BINDING) &&
         resolve_key_binding_collisions(
             conf, section_info[SECTION_MOUSE_BINDINGS].name,
             binding_action_map, &conf->bindings.mouse, MOUSE_BINDING);
@@ -3971,6 +4010,7 @@ config_clone(const struct config *old)
     key_binding_list_clone(&conf->bindings.key, &old->bindings.key);
     key_binding_list_clone(&conf->bindings.search, &old->bindings.search);
     key_binding_list_clone(&conf->bindings.url, &old->bindings.url);
+    key_binding_list_clone(&conf->bindings.vim, &old->bindings.vim);
     key_binding_list_clone(&conf->bindings.mouse, &old->bindings.mouse);
 
     conf->env_vars.length = 0;
@@ -4064,6 +4104,7 @@ config_free(struct config *conf)
     free_key_binding_list(&conf->bindings.key);
     free_key_binding_list(&conf->bindings.search);
     free_key_binding_list(&conf->bindings.url);
+    free_key_binding_list(&conf->bindings.vim);
     free_key_binding_list(&conf->bindings.mouse);
     tll_free_and_free(conf->mouse.selection_override_modifiers, free);
 

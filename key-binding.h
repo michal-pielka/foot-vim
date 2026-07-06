@@ -48,6 +48,7 @@ enum bind_action_normal {
     BIND_ACTION_THEME_SWITCH_DARK,
     BIND_ACTION_THEME_SWITCH_LIGHT,
     BIND_ACTION_THEME_TOGGLE,
+    BIND_ACTION_VIM_MODE_START,
 
     /* Mouse specific actions - i.e. they require a mouse coordinate */
     BIND_ACTION_SCROLLBACK_UP_MOUSE,
@@ -61,7 +62,7 @@ enum bind_action_normal {
     BIND_ACTION_SELECT_QUOTE,
     BIND_ACTION_SELECT_ROW,
 
-    BIND_ACTION_KEY_COUNT = BIND_ACTION_THEME_TOGGLE + 1,
+    BIND_ACTION_KEY_COUNT = BIND_ACTION_VIM_MODE_START + 1,
     BIND_ACTION_COUNT = BIND_ACTION_SELECT_ROW + 1,
 };
 
@@ -112,6 +113,12 @@ enum bind_action_url {
     BIND_ACTION_URL_COUNT,
 };
 
+enum bind_action_vim {
+    BIND_ACTION_VIM_NONE,
+    BIND_ACTION_VIM_CANCEL,
+    BIND_ACTION_VIM_COUNT,
+};
+
 typedef tll(xkb_keycode_t) xkb_keycode_list_t;
 
 struct key_binding {
@@ -144,6 +151,7 @@ struct key_binding_set {
     key_binding_list_t key;
     key_binding_list_t search;
     key_binding_list_t url;
+    key_binding_list_t vim;
     key_binding_list_t mouse;
     xkb_mod_mask_t selection_overrides;
 };

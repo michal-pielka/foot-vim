@@ -631,6 +631,12 @@ struct terminal {
         } last;
     } search;
 
+    struct {
+        bool active;
+        bool reenable_ime;
+        struct coord cursor;  /* Absolute grid coordinates */
+    } vim;
+
     struct wayland *wl;
     struct wl_window *window;
     bool visual_focus;

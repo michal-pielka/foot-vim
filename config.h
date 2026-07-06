@@ -381,6 +381,9 @@ struct config {
 
         /* While showing URL jump labels */
         struct config_key_binding_list url;
+
+        /* While in vim mode */
+        struct config_key_binding_list vim;
     } bindings;
 
     struct {

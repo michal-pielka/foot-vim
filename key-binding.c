@@ -113,6 +113,7 @@ key_binding_new_for_seat(struct key_binding_manager *mgr,
                 .key = tll_init(),
                 .search = tll_init(),
                 .url = tll_init(),
+                .vim = tll_init(),
                 .mouse = tll_init(),
             },
             .conf = it->item->conf,
@@ -154,6 +155,7 @@ key_binding_new_for_conf(struct key_binding_manager *mgr,
                 .key = tll_init(),
                 .search = tll_init(),
                 .url = tll_init(),
+                .vim = tll_init(),
                 .mouse = tll_init(),
             },
             .conf = conf,
@@ -554,6 +556,17 @@ convert_url_bindings(struct key_set *set)
 }
 
 static void
+convert_vim_bindings(struct key_set *set)
+{
+    const struct config *conf = set->conf;
+
+    for (size_t i = 0; i < conf->bindings.vim.count; i++) {
+        const struct config_key_binding *binding = &conf->bindings.vim.arr[i];
+        convert_key_binding(set, binding, &set->public.vim);
+    }
+}
+
+static void
 convert_mouse_binding(struct key_set *set,
                       const struct config_key_binding *conf_binding)
 {
@@ -599,6 +612,7 @@ load_keymap(struct key_set *set)
     convert_key_bindings(set);
     convert_search_bindings(set);
     convert_url_bindings(set);
+    convert_vim_bindings(set);
     convert_mouse_bindings(set);
 
     set->public.selection_overrides = mods_to_mask(
@@ -640,6 +654,7 @@ unload_keymap(struct key_set *set)
     key_bindings_destroy(&set->public.key);
     key_bindings_destroy(&set->public.search);
     key_bindings_destroy(&set->public.url);
+    key_bindings_destroy(&set->public.vim);
     key_bindings_destroy(&set->public.mouse);
     set->public.selection_overrides = 0;
 }
