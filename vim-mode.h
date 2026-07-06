@@ -14,6 +14,9 @@ void vim_mode_input(
     const xkb_keysym_t *raw_syms, size_t raw_count,
     uint32_t serial);
 
+/* Move the cursor to 'pos' (absolute grid coordinates) */
+void vim_mode_goto(struct terminal *term, struct coord pos);
+
 /* Drag the cursor along when the viewport has been scrolled */
 void vim_mode_view_changed(struct terminal *term);
 
