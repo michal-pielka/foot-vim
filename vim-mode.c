@@ -1,9 +1,12 @@
 #include "vim-mode.h"
 
+#include <xkbcommon/xkbcommon-compose.h>
+
 #define LOG_MODULE "vim-mode"
 #define LOG_ENABLE_DBG 0
 #include "log.h"
 
+#include "char32.h"
 #include "commands.h"
 #include "config.h"
 #include "grid.h"
@@ -756,6 +759,10 @@ vim_mode_begin(struct terminal *term)
     }
 
     term->vim.active = true;
+    term->vim.inline_search.character = U'\0';
+    term->vim.inline_search.char_pending = false;
+    term->vim.inline_search.backward = false;
+    term->vim.inline_search.stop_short = false;
 
     /* Keyboard input is never sent to the client while in vim mode */
     if (term_ime_is_enabled(term)) {
@@ -830,6 +837,126 @@ vim_mode_resized(struct terminal *term)
     struct vim_ctx ctx = ctx_for_term(term);
     term->vim.cursor.row = sb_to_abs(&ctx, ctx.pos.row);
     term->vim.cursor.col = ctx.pos.col;
+}
+
+/* Search for the last inline search character, within the current
+ * logical line, like f/F/t/T/;/, in vi */
+static void
+inline_search_exec(struct terminal *term, bool backward)
+{
+    const char32_t needle = term->vim.inline_search.character;
+    if (needle == U'\0')
+        return;
+
+    struct vim_ctx ctx = ctx_for_term(term);
+    const int last_col = term->cols - 1;
+    struct coord pos = ctx.pos;
+    bool found = false;
+
+    if (!backward) {
+        /* Immediately stop if the starting point is on a line break */
+        if (pos.col == last_col && !row_wraps(&ctx, pos.row))
+            return;
+
+        while (!is_boundary(&ctx, pos, VIM_RIGHT)) {
+            pos = advance(&ctx, pos, VIM_RIGHT);
+
+            const struct row *row = row_at(&ctx, pos.row);
+            if (!is_spacer(row, pos.col) &&
+                base_char(&ctx, row, pos.col) == needle)
+            {
+                found = true;
+                break;
+            }
+
+            if (pos.col == last_col && !row_wraps(&ctx, pos.row)) {
+                /* Hard line break - stop */
+                break;
+            }
+        }
+    } else {
+        while (!is_boundary(&ctx, pos, VIM_LEFT)) {
+            struct coord prev = advance(&ctx, pos, VIM_LEFT);
+
+            if (prev.col == last_col && !row_wraps(&ctx, prev.row)) {
+                /* Crossed a hard line break - stop */
+                break;
+            }
+
+            pos = prev;
+
+            const struct row *row = row_at(&ctx, pos.row);
+            if (!is_spacer(row, pos.col) &&
+                base_char(&ctx, row, pos.col) == needle)
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if (!found)
+        return;
+
+    if (term->vim.inline_search.stop_short)
+        pos = advance(&ctx, pos, backward ? VIM_RIGHT : VIM_LEFT);
+
+    ctx.pos = pos;
+    apply_cursor(&ctx);
+}
+
+static bool
+inline_search_start(struct terminal *term, bool backward, bool stop_short)
+{
+    term->vim.inline_search.backward = backward;
+    term->vim.inline_search.stop_short = stop_short;
+    term->vim.inline_search.char_pending = true;
+    term->vim.inline_search.character = U'\0';
+    return true;
+}
+
+/* The next typed character is the inline search target */
+static void
+inline_search_capture(struct seat *seat, struct terminal *term, uint32_t key)
+{
+    term->vim.inline_search.char_pending = false;
+
+    enum xkb_compose_status compose_status =
+        seat->kbd.xkb_compose_state != NULL
+            ? xkb_compose_state_get_status(seat->kbd.xkb_compose_state)
+            : XKB_COMPOSE_NOTHING;
+
+    uint8_t buf[64] = {0};
+    int count = 0;
+
+    if (compose_status == XKB_COMPOSE_COMPOSED) {
+        count = xkb_compose_state_get_utf8(
+            seat->kbd.xkb_compose_state, (char *)buf, sizeof(buf));
+        xkb_compose_state_reset(seat->kbd.xkb_compose_state);
+    } else if (compose_status == XKB_COMPOSE_CANCELLED ||
+               compose_status == XKB_COMPOSE_COMPOSING) {
+        count = 0;
+    } else {
+        count = xkb_state_key_get_utf8(
+            seat->kbd.xkb_state, key, (char *)buf, sizeof(buf));
+    }
+
+    if (count == 0) {
+        /* Not a character (e.g. a modifier key) - keep waiting */
+        term->vim.inline_search.char_pending = true;
+        return;
+    }
+
+    char32_t c32s[64];
+    size_t chars = mbsntoc32(c32s, (const char *)buf, count, ALEN(c32s) - 1);
+
+    if (chars == (size_t)-1 || chars == 0 || !isc32print(c32s[0])) {
+        /* Control character (e.g. escape) - abort */
+        return;
+    }
+
+    term->vim.inline_search.character = c32s[0];
+    inline_search_exec(term, term->vim.inline_search.backward);
 }
 
 /* Start a new selection at the cursor, toggle an existing one of the
@@ -1023,6 +1150,26 @@ execute_binding(struct seat *seat, struct terminal *term,
         motion(term, &motion_last);
         return yank(seat, term, serial);
 
+    case BIND_ACTION_VIM_INLINE_SEARCH_FORWARD:
+        return inline_search_start(term, false, false);
+
+    case BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD:
+        return inline_search_start(term, true, false);
+
+    case BIND_ACTION_VIM_INLINE_SEARCH_FORWARD_SHORT:
+        return inline_search_start(term, false, true);
+
+    case BIND_ACTION_VIM_INLINE_SEARCH_BACKWARD_SHORT:
+        return inline_search_start(term, true, true);
+
+    case BIND_ACTION_VIM_INLINE_SEARCH_NEXT:
+        inline_search_exec(term, term->vim.inline_search.backward);
+        return true;
+
+    case BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS:
+        inline_search_exec(term, !term->vim.inline_search.backward);
+        return true;
+
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
         return true;
@@ -1041,6 +1188,11 @@ vim_mode_input(struct seat *seat, struct terminal *term,
 {
     LOG_DBG("vim mode: input: sym=%d/0x%x, mods=0x%08x, consumed=0x%08x",
             sym, sym, mods, consumed);
+
+    if (term->vim.inline_search.char_pending) {
+        inline_search_capture(seat, term, key);
+        return;
+    }
 
     /* Match untranslated symbols */
     tll_foreach(bindings->vim, it) {
