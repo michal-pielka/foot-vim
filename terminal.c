@@ -42,6 +42,7 @@
 #include "slave.h"
 #include "spawn.h"
 #include "url-mode.h"
+#include "vim-mode.h"
 #include "util.h"
 #include "vt.h"
 #include "xmalloc.h"
@@ -2146,6 +2147,8 @@ term_reset(struct terminal *term, bool hard)
         term->grid = &term->normal;
         selection_cancel(term);
     }
+
+    vim_mode_cancel(term);
 
     term->meta.esc_prefix = true;
     term->meta.eight_bit = true;

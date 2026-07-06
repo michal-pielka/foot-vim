@@ -341,6 +341,7 @@ executable(
   'unicode-mode.c', 'unicode-mode.h',
   'url-mode.c', 'url-mode.h',
   'user-notification.c', 'user-notification.h',
+  'vim-mode.c', 'vim-mode.h',
   'wayland.c', 'wayland.h', 'shm-formats.h',
   'xkbcommon-vmod.h',
   srgb_funcs, wl_proto_src + wl_proto_headers, version,

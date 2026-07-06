@@ -8,6 +8,7 @@
 #include "selection.h"
 #include "terminal.h"
 #include "url-mode.h"
+#include "vim-mode.h"
 #include "util.h"
 
 void
@@ -56,6 +57,7 @@ cmd_scrollback_up(struct terminal *term, int rows)
     } else
         term_damage_view(term);
 
+    vim_mode_view_changed(term);
     render_refresh_urls(term);
     render_refresh(term);
 }
@@ -110,6 +112,7 @@ cmd_scrollback_down(struct terminal *term, int rows)
     } else
         term_damage_view(term);
 
+    vim_mode_view_changed(term);
     render_refresh_urls(term);
     render_refresh(term);
 }
