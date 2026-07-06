@@ -3270,6 +3270,15 @@ wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
         case WL_POINTER_BUTTON_STATE_PRESSED: {
             bool consumed = false;
 
+            if (cursor_is_on_grid && term_mouse_grabbed(term, seat) &&
+                vim_mode_is_active(term))
+            {
+                /* Move the vim cursor to the clicked cell */
+                vim_mode_goto(term, (struct coord){
+                    seat->mouse.col,
+                    grid_row_absolute_in_view(term->grid, seat->mouse.row)});
+            }
+
             if (cursor_is_on_grid && term_mouse_grabbed(term, seat)) {
                 const struct key_binding *match =
                     match_mouse_binding(seat, term, button);
