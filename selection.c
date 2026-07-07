@@ -896,7 +896,8 @@ mark_selected_region(struct terminal *term, pixman_box32_t *boxes,
         mark_variant == MARK_SELECTION_UNMARK_AND_DIRTY;
     const bool highlight_empty =
         mark_variant != MARK_SELECTION_MARK_FOR_RENDER ||
-        term->selection.kind == SELECTION_BLOCK;
+        term->selection.kind == SELECTION_BLOCK ||
+        term->selection.kind == SELECTION_LINE_WISE;
 
     for (size_t i = 0; i < count; i++) {
         const pixman_box32_t *box = &boxes[i];
