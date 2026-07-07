@@ -1,6 +1,15 @@
-# ![Logo: a terminal with a foot shaped prompt](icons/hicolor/48x48/apps/foot.png) foot
+# ![Logo: a terminal with a foot shaped prompt](icons/hicolor/48x48/apps/foot.png) foot (vim mode fork)
 
 The fast, lightweight and minimalistic Wayland terminal emulator.
+
+> **Note**: this is a fork of [foot](https://codeberg.org/dnkl/foot),
+> adding an [Alacritty](https://github.com/alacritty/alacritty)-style
+> **vim mode**: press <kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>space</kbd>
+> to move a cursor around the terminal content and the scrollback,
+> select and copy text, and search - all with vi-like key bindings.
+> See [vim mode](#vim-mode) below, and the `[vim-bindings]` section in
+> `man 5 foot.ini`. Everything else is unchanged from upstream foot;
+> all credit for the terminal itself goes to its authors.
 
 [![CI status](https://ci.codeberg.org/api/badges/dnkl/foot/status.svg)](https://ci.codeberg.org/dnkl/foot)
 
@@ -19,6 +28,7 @@ The fast, lightweight and minimalistic Wayland terminal emulator.
    1. [Keyboard](#keyboard)
       1. [Normal mode](#normal-mode)
       1. [Scrollback search](#scrollback-search)
+      1. [Vim mode](#vim-mode)
    1. [Mouse](#mouse)
    1. [Touchscreen](#touchscreen)
 1. [Server (daemon) mode](#server-daemon-mode)
@@ -56,6 +66,7 @@ The fast, lightweight and minimalistic Wayland terminal emulator.
 * On-the-fly font resize
 * On-the-fly DPI font size adjustment
 * Scrollback search
+* Vim mode, like Alacritty's vi mode (fork addition)
 * Keyboard driven URL detection
 * Color emoji support
 * IME (via `text-input-v3`)
@@ -210,6 +221,56 @@ These are the default shortcuts. See `man foot.ini` and the example
 <kbd>return</kbd>
 : Finish the search and copy the current match to the primary
   selection
+
+
+#### Vim mode
+
+Enter with <kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>space</kbd>. While
+active, the cursor position within the scrollback is shown in the top
+right corner, and all keyboard input is consumed by vim mode.
+
+<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>space</kbd>, <kbd>i</kbd>, <kbd>ctrl</kbd>+<kbd>c</kbd>
+: Exit vim mode, scrolling back to the bottom
+
+<kbd>h</kbd>/<kbd>j</kbd>/<kbd>k</kbd>/<kbd>l</kbd>, arrow keys
+: Move the cursor
+
+<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd>, <kbd>W</kbd>/<kbd>B</kbd>/<kbd>E</kbd>
+: Move by word (using the configured word delimiters, or whitespace)
+
+<kbd>0</kbd>/<kbd>$</kbd>/<kbd>^</kbd>
+: Move to the first column, last non-empty cell and first non-empty
+  cell (following logical lines across soft line breaks)
+
+<kbd>H</kbd>/<kbd>M</kbd>/<kbd>L</kbd>
+: Move to the top/middle/bottom of the viewport
+
+<kbd>%</kbd>, <kbd>{</kbd>/<kbd>}</kbd>
+: Jump to the matching bracket, and above/below the current paragraph
+
+<kbd>ctrl</kbd>+<kbd>b</kbd>/<kbd>f</kbd>/<kbd>u</kbd>/<kbd>d</kbd>/<kbd>y</kbd>/<kbd>e</kbd>
+: Scroll a page, half page or line up/down
+
+<kbd>g</kbd>/<kbd>G</kbd>, <kbd>z</kbd>
+: Jump to the beginning/end of the scrollback; center the cursor row
+
+<kbd>v</kbd>/<kbd>V</kbd>/<kbd>ctrl</kbd>+<kbd>v</kbd>/<kbd>alt</kbd>+<kbd>v</kbd>
+: Start a character/line/block/word wise selection (motions extend it)
+
+<kbd>y</kbd>, <kbd>Y</kbd>, <kbd>escape</kbd>
+: Copy the selection (or up to the end of the line) to the clipboard;
+  clear the selection
+
+<kbd>f</kbd>/<kbd>F</kbd>/<kbd>t</kbd>/<kbd>T</kbd>, <kbd>;</kbd>/<kbd>,</kbd>
+: Search for the next typed character within the current line, and
+  repeat the last such search
+
+<kbd>/</kbd>, <kbd>?</kbd>, <kbd>n</kbd>/<kbd>N</kbd>
+: Start a scrollback search (committing moves the cursor to the
+  match), and jump to the next/previous match
+
+All bindings are configurable in the `[vim-bindings]` section of
+`foot.ini`.
 
 
 ### URL mode
