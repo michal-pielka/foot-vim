@@ -692,6 +692,45 @@ draw_cursor(const struct terminal *term, const struct cell *cell,
     }
 }
 
+/*
+ * Returns true if the cell is at one of the selection's boundaries.
+ *
+ * Used to skip the selection color inversion for the cell under a
+ * block cursor: the cursor is instead drawn with the cell's reverse
+ * video colors, making the cell appear selected, with a visible
+ * cursor. This matches Alacritty.
+ */
+static bool
+is_selection_boundary(const struct terminal *term, int row_no, int col)
+{
+    if (term->cursor_style != CURSOR_BLOCK || !term->kbd_focus)
+        return false;
+
+    const struct coord start = selection_get_start(term);
+    const struct coord end = selection_get_end(term);
+
+    if (start.row < 0 || end.row < 0)
+        return false;
+
+    const int abs_row = grid_row_absolute_in_view(term->grid, row_no);
+
+    if ((start.row == abs_row && start.col == col) ||
+        (end.row == abs_row && end.col == col))
+    {
+        return true;
+    }
+
+    /* The corners of a block selection are boundaries too */
+    if (term->selection.kind == SELECTION_BLOCK &&
+        ((start.row == abs_row && end.col == col) ||
+         (end.row == abs_row && start.col == col)))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 static int
 render_cell(struct terminal *term, pixman_image_t *pix,
             pixman_region32_t *damage, struct row *row, int row_no, int col,
@@ -713,7 +752,10 @@ render_cell(struct terminal *term, pixman_image_t *pix,
     uint32_t _bg = 0;
 
     uint16_t alpha = 0xffff;
-    const bool is_selected = cell->attrs.selected;
+
+    /* Do not invert a block cursor at the selection boundaries */
+    const bool is_selected = cell->attrs.selected &&
+        !(has_cursor && is_selection_boundary(term, row_no, col));
 
     /* Use cell specific color, if set, otherwise the default colors (possible reversed) */
     switch (cell->attrs.fg_src) {
