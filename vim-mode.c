@@ -1211,14 +1211,20 @@ execute_binding(struct seat *seat, struct terminal *term,
         return true;
 
     case BIND_ACTION_VIM_SEARCH_START:
+        term->vim.search_backward = false;
+        search_begin(term);
+        return true;
+
+    case BIND_ACTION_VIM_SEARCH_START_BACKWARD:
+        term->vim.search_backward = true;
         search_begin(term);
         return true;
 
     case BIND_ACTION_VIM_SEARCH_NEXT:
-        return search_jump(term, false);
+        return search_jump(term, term->vim.search_backward);
 
     case BIND_ACTION_VIM_SEARCH_PREVIOUS:
-        return search_jump(term, true);
+        return search_jump(term, !term->vim.search_backward);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
