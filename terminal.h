@@ -634,7 +634,8 @@ struct terminal {
     struct {
         bool active;
         bool reenable_ime;
-        struct coord cursor;  /* Absolute grid coordinates */
+        bool search_backward;  /* Last search direction */
+        struct coord cursor;   /* Absolute grid coordinates */
 
         struct {
             char32_t character;  /* Last searched-for character */

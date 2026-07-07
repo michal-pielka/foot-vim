@@ -1778,14 +1778,19 @@ _[lines-above-the-bottom/total-lines]_. It is colored using
 	Repeat the last inline search, in the same/opposite direction.
 	Default: _semicolon_, _comma_.
 
-*search-start*
+*search-start*, *search-start-backward*
 	Start a scrollback search (see **search-bindings**). Committing
-	the search moves the cursor to the match. Default: _slash_.
+	the search moves the cursor to the match. The two variants only
+	differ in the direction used by *search-next*/*search-previous*:
+	forward for *search-start*, backward for *search-start-backward*
+	(like */* and *?* in vi). Default: _slash_, _question_.
 
 *search-next*, *search-previous*
 	Jump to the next/previous match of the most recent search query,
-	wrapping around at the ends of the scrollback. Default: _n_,
-	_Shift+n_.
+	wrapping around at the ends of the scrollback. The direction
+	follows the last used search variant: after
+	*search-start-backward*, *search-next* jumps backwards. Default:
+	_n_, _Shift+n_.
 
 # SECTION: text-bindings
 
