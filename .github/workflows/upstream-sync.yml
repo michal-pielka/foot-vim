@@ -1,0 +1,136 @@
+name: Sync with upstream foot
+
+# Periodically merge upstream (codeberg.org/dnkl/foot) into master, via
+# a pull request. The PR is merged automatically if the merge is
+# conflict free AND the merged result builds and passes the tests.
+# Otherwise the PR is left open, with a comment, for manual resolution.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_URL: https://codeberg.org/dnkl/foot.git
+  UPSTREAM_BRANCH: master
+  SYNC_BRANCH: upstream-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        id: fetch
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream "$UPSTREAM_BRANCH"
+
+          new_commits=$(git rev-list --count "HEAD..upstream/$UPSTREAM_BRANCH")
+          echo "new-commits=$new_commits" >> "$GITHUB_OUTPUT"
+          echo "$new_commits new upstream commit(s)"
+
+      - name: Push sync branch and open PR
+        if: steps.fetch.outputs.new-commits != '0'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git push --force origin \
+              "refs/remotes/upstream/$UPSTREAM_BRANCH:refs/heads/$SYNC_BRANCH"
+
+          pr=$(gh pr list --head "$SYNC_BRANCH" --base master --state open \
+               --json number --jq '.[0].number')
+
+          if [ -z "$pr" ]; then
+            body=$(printf '%s\n\n%s' \
+                "Automated merge of upstream ($UPSTREAM_URL, branch \`$UPSTREAM_BRANCH\`)." \
+                "Merged automatically when conflict free and the merged result builds and passes the tests.")
+
+            gh pr create \
+                --head "$SYNC_BRANCH" --base master \
+                --title "Sync with upstream foot" \
+                --body "$body"
+
+            pr=$(gh pr list --head "$SYNC_BRANCH" --base master --state open \
+                 --json number --jq '.[0].number')
+          fi
+
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
+
+      - name: Check for merge conflicts
+        if: steps.fetch.outputs.new-commits != '0'
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git merge --no-ff --no-edit "upstream/$UPSTREAM_BRANCH"; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.merge.outputs.clean == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              meson ninja-build pkg-config cmake gcc git scdoc ncurses-bin \
+              libwayland-dev wayland-protocols libxkbcommon-dev \
+              libfontconfig-dev libfreetype-dev libharfbuzz-dev \
+              libpixman-1-dev libutf8proc-dev libutempter-dev
+
+      - name: Build and test the merged result
+        if: steps.merge.outputs.clean == 'true'
+        id: build
+        run: |
+          if meson setup build --buildtype=release &&
+             ninja -C build &&
+             ninja -C build test
+          then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge the PR
+        if: steps.build.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --merge
+
+      - name: Leave the PR open for manual resolution
+        if: >-
+          steps.fetch.outputs.new-commits != '0' &&
+          (steps.merge.outputs.clean != 'true' ||
+           steps.build.outputs.ok != 'true')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${{ steps.merge.outputs.clean }}" != "true" ]; then
+            reason="the merge has conflicts"
+          else
+            reason="the merged result fails to build (or fails the tests)"
+          fi
+
+          body=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+              "Not merging automatically: $reason. Resolve manually:" \
+              '```sh' \
+              "git fetch upstream $UPSTREAM_BRANCH" \
+              "git merge upstream/$UPSTREAM_BRANCH   # fix conflicts and/or the build" \
+              "git push origin master" \
+              '```' \
+              "[Failed run]($RUN_URL)")
+
+          gh pr comment "${{ steps.pr.outputs.number }}" --body "$body"

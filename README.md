@@ -10,6 +10,11 @@ The fast, lightweight and minimalistic Wayland terminal emulator.
 > See [vim mode](#vim-mode) below, and the `[vim-bindings]` section in
 > `man 5 foot.ini`. Everything else is unchanged from upstream foot;
 > all credit for the terminal itself goes to its authors.
+>
+> The fork tracks upstream automatically: a weekly GitHub Actions
+> workflow opens a PR merging new upstream commits, and merges it on
+> its own when the merge is conflict free and the result builds and
+> passes the tests.
 
 [![CI status](https://ci.codeberg.org/api/badges/dnkl/foot/status.svg)](https://ci.codeberg.org/dnkl/foot)
 
