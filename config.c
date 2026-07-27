@@ -106,6 +106,47 @@ static const uint32_t default_sixel_colors[16] = {
     0xffcccccc,
 };
 
+static const char *const default_url_regex_string =
+    "("
+        "("
+            "(https?://|mailto:|ftp://|file:|ssh:|ssh://|git://|tel:|magnet:|ipfs://|ipns://|gemini://|gopher://|news:)"
+            "|"
+            "www\\."
+        ")"
+        "("
+            /* Safe + reserved + some unsafe characters parenthesis and double quotes omitted (we only allow them when balanced) */
+            "[0-9a-zA-Z:/?#@!$&*+,;=.~_%^'\\-]+"
+            "|"
+             /* Balanced "(...)". Content is same as above, plus all _other_ characters we require to be balanced */
+            "\\([]\\[\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\\)"
+            "|"
+             /* Balanced "[...]". Content is same as above, plus all _other_ characters we require to be balanced */
+            "\\[[\\(\\)\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\\]"
+            "|"
+             /* Balanced '"..."'. Content is same as above, plus all _other_ characters we require to be balanced */
+            "\"[]\\[\\(\\)0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\""
+            "|"
+             /* Balanced "'...'". Content is same as above, plus all _other_ characters we require to be balanced */
+            "'[]\\[\\(\\)0-9a-zA-Z:/?#@!$&*+,;=.~_%^\\-]+'"
+        ")+"
+        "("
+            /* Same as above, except :?!,;.' are excluded */
+            "[0-9a-zA-Z/#@$&*+=~_%^\\-]"
+            "|"
+             /* Balanced "(...)". Content is same as above, plus all _other_ characters we require to be balanced */
+            "\\([]\\[\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\\)"
+            "|"
+             /* Balanced "[...]". Content is same as above, plus all _other_ characters we require to be balanced */
+            "\\[[\\(\\)\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\\]"
+            "|"
+             /* Balanced '"..."'. Content is same as above, plus all _other_ characters we require to be balanced */
+            "\"[]\\[\\(\\)0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]+\""
+            "|"
+             /* Balanced "'...'". Content is same as above, plus all _other_ characters we require to be balanced */
+            "'[]\\[\\(\\)0-9a-zA-Z:/?#@!$&*+,;=.~_%^\\-]+'"
+        ")"
+    ")";
+
 static const char *const binding_action_map[] = {
     [BIND_ACTION_NONE] = NULL,
     [BIND_ACTION_NOOP] = "noop",
@@ -3787,50 +3828,10 @@ config_load(struct config *conf, const char *conf_path,
     tokenize_cmdline("xdg-open ${url}", &conf->url.launch.argv.args);
 
     {
-    const char *url_regex_string =
-        "("
-            "("
-                "(https?://|mailto:|ftp://|file:|ssh:|ssh://|git://|tel:|magnet:|ipfs://|ipns://|gemini://|gopher://|news:)"
-                "|"
-                "www\\."
-            ")"
-            "("
-                /* Safe + reserved + some unsafe characters parenthesis and double quotes omitted (we only allow them when balanced) */
-                "[0-9a-zA-Z:/?#@!$&*+,;=.~_%^\\-]+"
-                "|"
-                 /* Balanced "(...)". Content is same as above, plus all _other_ characters we require to be balanced */
-                "\\([]\\[\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\\)"
-                "|"
-                 /* Balanced "[...]". Content is same as above, plus all _other_ characters we require to be balanced */
-                "\\[[\\(\\)\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\\]"
-                "|"
-                 /* Balanced '"..."'. Content is same as above, plus all _other_ characters we require to be balanced */
-                "\"[]\\[\\(\\)0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\""
-                "|"
-                 /* Balanced "'...'". Content is same as above, plus all _other_ characters we require to be balanced */
-                "'[]\\[\\(\\)0-9a-zA-Z:/?#@!$&*+,;=.~_%^\\-]*'"
-            ")+"
-            "("
-                /* Same as above, except :?!,;. are excluded */
-                "[0-9a-zA-Z/#@$&*+=~_%^\\-]"
-                "|"
-                 /* Balanced "(...)". Content is same as above, plus all _other_ characters we require to be balanced */
-                "\\([]\\[\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\\)"
-                "|"
-                 /* Balanced "[...]". Content is same as above, plus all _other_ characters we require to be balanced */
-                "\\[[\\(\\)\"0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\\]"
-                "|"
-                 /* Balanced '"..."'. Content is same as above, plus all _other_ characters we require to be balanced */
-                "\"[]\\[\\(\\)0-9a-zA-Z:/?#@!$&'*+,;=.~_%^\\-]*\""
-                "|"
-                 /* Balanced "'...'". Content is same as above, plus all _other_ characters we require to be balanced */
-                "'[]\\[\\(\\)0-9a-zA-Z:/?#@!$&*+,;=.~_%^\\-]*'"
-            ")"
-        ")";
 
-        int r = regcomp(&conf->url.preg, url_regex_string, REG_EXTENDED);
+        int r = regcomp(&conf->url.preg, default_url_regex_string, REG_EXTENDED);
         xassert(r == 0);
-        conf->url.regex = xstrdup(url_regex_string);
+        conf->url.regex = xstrdup(default_url_regex_string);
         xassert(conf->url.preg.re_nsub >= 1);
     }
 
@@ -4379,3 +4380,140 @@ conf_modifiers_to_mask(const struct seat *seat,
     return mods;
 }
 #endif
+
+
+static void UNUSED
+unittest_check_url_match(const char *url, const char *expected_match,
+                         regmatch_t match)
+{
+    const size_t mlen = match.rm_eo - match.rm_so;
+    const size_t start = &url[match.rm_so] - url;
+    //const size_t end = start + mlen;
+
+    if (mlen != strlen(expected_match) ||
+        memcmp(&url[start], expected_match, mlen) != 0)
+    {
+        printf("url: %s\n"
+               "  expected match: %s\n"
+               "  match:          %.*s\n",
+               url, expected_match, (int)mlen, &url[start]);
+        BUG("URL regex failure");
+    }
+}
+
+UNITTEST
+{
+    regex_t re;
+    int r = regcomp(&re, default_url_regex_string, REG_EXTENDED);
+    xassert(r == 0);
+    xassert(re.re_nsub >= 1);
+
+    const struct {
+        const char *url;
+        const char *expected_match;
+    } test_cases[] = {
+        {"https://www.foobar.com/[a](b)\"c\"'d'efg.html?foo=bar&bar=foo",
+         "https://www.foobar.com/[a](b)\"c\"'d'efg.html?foo=bar&bar=foo"},
+
+        /* Trailing quotes are not matched */
+        {"https://quote-at-the-end'",
+         "https://quote-at-the-end"},
+
+        {"https://quote-at-the-end\"",
+         "https://quote-at-the-end"},
+
+        /* That includes quoted URLs too */
+        {"'https://quote-at-the-end''",
+         "https://quote-at-the-end"},
+
+        {"\"https://quote-at-the-end\"\"",
+         "https://quote-at-the-end"},
+
+        /* Allow '-quotes in the middle */
+        {"https://unbalanced'not-at-the-end",
+         "https://unbalanced'not-at-the-end"},
+
+        /* But not "-quotes */
+        {"https://unbalanced\"not-at-the-end",
+         "https://unbalanced"},
+
+        /* "Balanced" quotes are allowed, at the end */
+        {"https://balanced-'quote'",
+         "https://balanced-'quote'"},
+
+        /* ... and in the middle */
+        {"https://balanced-'quote'-in-the-middle",
+         "https://balanced-'quote'-in-the-middle"},
+
+        /* Balanced "-quotes too */
+        {"https://balanced-\"quote\"",
+         "https://balanced-\"quote\""},
+
+        {"https://balanced-\"quote\"-in-the-middle",
+         "https://balanced-\"quote\"-in-the-middle"},
+
+        /* Quoted URLs should match the URL part, not the quotes */
+        {"'https://quoted-url'",
+         "https://quoted-url"},
+
+        /* Same with "-quotes */
+        {"\"https://quoted-url\"",
+         "https://quoted-url"},
+
+        {"\"https://quoted-url-with-'-inside\"",
+         "https://quoted-url-with-'-inside"},
+
+        {"'https://abc' foobar",
+         "https://abc"},
+
+        {"https://foo[bar",
+         "https://foo"},
+
+        {"https://foo[]bar",
+         "https://foo"},
+
+        {"https://foo[abc]",
+         "https://foo[abc]"},
+
+        {"https://foo[abc]bar",
+         "https://foo[abc]bar"},
+
+        {"https://foo(bar",
+         "https://foo"},
+
+        {"https://foo()bar",
+         "https://foo"},
+
+        {"https://foo(abc)",
+         "https://foo(abc)"},
+
+        {"https://foo(abc)bar",
+         "https://foo(abc)bar"},
+
+        {"https://foo{bar",
+         "https://foo"},
+
+        {"https://foo{}bar",
+         "https://foo"},
+
+        {"https://foo{abc}bar",
+         "https://foo"},
+    };
+
+    for (size_t i = 0; i < ALEN(test_cases); i++) {
+        const char *const url = test_cases[i].url;
+        const char *const expected_match = test_cases[i].expected_match;
+
+#if 0
+        printf("url:      %s\n", url);
+        printf("expecede: %s\n", expected_match);
+#endif
+
+        regmatch_t matches[re.re_nsub + 1];
+        int r UNUSED = regexec(&re, url, re.re_nsub + 1, matches, 0);
+        assert(r == 0);
+        unittest_check_url_match(url, expected_match, matches[1]);
+    }
+
+    regfree(&re);
+}

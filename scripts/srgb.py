@@ -3,7 +3,6 @@
 import argparse
 import math
 
-
 # Note: we use a pure gamma 2.2 function, rather than the piece-wise
 # sRGB transfer function, since that is what all compositors do.
 

@@ -57,9 +57,10 @@ unicode_mode_input(struct seat *seat, struct terminal *term,
                 term->unicode_mode.character, (int)chars, utf8);
 
         if (chars != (size_t)-1) {
-            if (term->is_searching)
+            if (term->is_searching) {
                 search_add_chars(term, utf8, chars);
-            else
+                search_find_next(term, SEARCH_BACKWARD_SAME_POSITION);
+            } else
                 term_to_slave(term, utf8, chars);
         }
 

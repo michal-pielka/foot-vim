@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "xmalloc.h"
@@ -7,19 +8,14 @@
 static void *
 check_alloc(void *alloc)
 {
-    if (unlikely(alloc == NULL)) {
-        FATAL_ERROR(__func__, ENOMEM);
-    }
+    FATAL_ERROR_ON(alloc == NULL, ENOMEM);
     return alloc;
 }
 
 void *
 xmalloc(size_t size)
 {
-    if (unlikely(size == 0)) {
-        size = 1;
-    }
-    return check_alloc(malloc(size));
+    return check_alloc(malloc(likely(size) ? size : 1));
 }
 
 void *
@@ -33,16 +29,18 @@ void *
 xrealloc(void *ptr, size_t size)
 {
     xassert(size != 0);
-    void *alloc = realloc(ptr, size);
-    return check_alloc(alloc);
+    return check_alloc(realloc(ptr, size));
 }
 
+// reallocarray(3) was only added to POSIX in Issue 8 (2024) and isn't
+// present on some platforms (e.g. Android API levels < 29), so this
+// function is both for portability and ENOMEM handling.
 void *
-xreallocarray(void *ptr, size_t n, size_t size)
+xreallocarray(void *ptr, size_t nmemb, size_t size)
 {
-    xassert(n != 0 && size != 0);
-    void *alloc = reallocarray(ptr, n, size);
-    return check_alloc(alloc);
+    FATAL_ERROR_ON(nmemb == 0 || size == 0, EINVAL);
+    FATAL_ERROR_ON(size > SIZE_MAX / nmemb, EOVERFLOW);
+    return xrealloc(ptr, nmemb * size);
 }
 
 char *
@@ -69,9 +67,7 @@ xvasprintf_(char **strp, const char *format, va_list ap)
     va_list ap2;
     va_copy(ap2, ap);
     int n = vsnprintf(NULL, 0, format, ap2);
-    if (unlikely(n < 0)) {
-        FATAL_ERROR("vsnprintf", EILSEQ);
-    }
+    FATAL_ERROR_ON(n < 0, EILSEQ);
     va_end(ap2);
     *strp = xmalloc(n + 1);
     return vsnprintf(*strp, n + 1, format, ap);

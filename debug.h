@@ -2,7 +2,8 @@
 
 #include "macros.h"
 
-#define FATAL_ERROR(...) fatal_error(__FILE__, __LINE__, __VA_ARGS__)
+#define FATAL_ERROR(msg, err) fatal_error(__FILE__, __LINE__, msg, err)
+#define FATAL_ERROR_ON(cond, err) if (unlikely(cond)) FATAL_ERROR(__func__, err)
 
 #ifdef NDEBUG
     #define BUG(...) UNREACHABLE()

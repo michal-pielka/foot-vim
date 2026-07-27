@@ -7,7 +7,6 @@ import signal
 import struct
 import sys
 import termios
-
 from typing import Any
 
 
@@ -50,7 +49,6 @@ def main() -> None:
             def dummy(*args: Any) -> None:
                 """Need a handler installed for sigwait() to trigger."""
                 _ = args
-                pass
             signal.signal(signal.SIGWINCH, dummy)
 
             while True:
@@ -90,7 +88,7 @@ def main() -> None:
         width = 8 * cols     # PGO help binary hardcodes cell width to 8px
 
     if lines is None or cols is None or height is None or width is None:
-        raise Exception('could not get terminal width/height; use --rows and --cols')
+        raise ValueError('could not get terminal width/height; use --rows and --cols')
 
     assert lines > 0, f'{lines}'
     assert cols > 0, f'{cols}'

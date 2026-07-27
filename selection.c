@@ -464,38 +464,32 @@ selection_find_word_boundary_right(const struct terminal *term, struct coord *po
     bool have_seen_word = initial_is_word;
 
     while (true) {
-        int next_col = pos->col + 1;
+        int next_col = pos->col;
         int next_row = pos->row;
 
         const struct row *row = term->grid->rows[next_row];
 
-        /* Linewrap */
-        if (next_col >= term->cols) {
-            if (row->linebreak) {
-                /* Hard linebreak, treat as space. I.e. break selection */
-                break;
-            }
-
-            next_col = 0;
-            next_row = (next_row + 1) & (grid->num_rows - 1);
-
-            if (grid_row_abs_to_sb(grid, term->rows, next_row) == 0) {
-                /* Scrollback wrap-around */
-                break;
-            }
-
-            row = grid->rows[next_row];
-        }
-
-        c = row->cells[next_col].wc;
-        while (c >= CELL_SPACER) {
+        do {
+            /* Linewrap */
             if (++next_col >= term->cols) {
-                next_col = 0;
-                if (++next_row >= term->rows)
+                if (row->linebreak) {
+                    /* Hard linebreak, treat as space. I.e. break selection */
                     return;
+                }
+
+                next_col = 0;
+                next_row = (next_row + 1) & (grid->num_rows - 1);
+
+                if (grid_row_abs_to_sb(grid, term->rows, next_row) == 0) {
+                    /* Scrollback wrap-around */
+                    return;
+                }
+
+                row = grid->rows[next_row];
             }
+
             c = row->cells[next_col].wc;
-        }
+        } while (c >= CELL_SPACER);
 
         if (c >= CELL_COMB_CHARS_LO && c <= CELL_COMB_CHARS_HI)
             c = composed_lookup(term->composed, c - CELL_COMB_CHARS_LO)->chars[0];

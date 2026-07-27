@@ -93,9 +93,16 @@
 * Dracula theme updated to latest official, and light theme alucard
   added.
 * Sixels: pan/pad clamped to 5 ([#2371][2371]).
+* Default URL regex changed to:
+  + allow single quotes (`'`) _inside_ the URL (but not at the end,
+    unless balanced).
+  + require at least one character inside balanced `[]`, `()`, `''` or
+    `""`.
+  ([#2417][2417]).
 
 [2383]: https://codeberg.org/dnkl/foot/issues/2383
 [2371]: https://codeberg.org/dnkl/foot/issues/2371
+[2417]: https://codeberg.org/dnkl/foot/issues/2417
 
 
 ### Deprecated
@@ -123,6 +130,10 @@
 * Crash in `--server` mode, when a tracked notification is closed
   after the associated terminal instance has been closed
   ([#2397][2397]).
+* Incorrect word boundary detection when selection words with a
+  multi-column character in the last column ([#2411][2411]).
+* `reallocarray()` is no longer required, so as to support platforms
+  where libc doesn't include it (e.g. Termux + Android API < 29).
 
 [2353]: https://codeberg.org/dnkl/foot/issues/2353
 [2352]: https://codeberg.org/dnkl/foot/issues/2352
@@ -132,6 +143,7 @@
 [2370]: https://codeberg.org/dnkl/foot/issues/2370
 [2364]: https://codeberg.org/dnkl/foot/issues/2364
 [2397]: https://codeberg.org/dnkl/foot/issues/2397
+[2411]: https://codeberg.org/dnkl/foot/issues/2411
 
 
 ### Security

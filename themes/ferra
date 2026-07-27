@@ -1,0 +1,31 @@
+# -*- conf -*-
+# theme: Ferra
+# source: https://github.com/casperstorm/ferra
+
+[main]
+initial-color-theme=dark
+
+[colors-dark]
+foreground=fecdb2
+background=2b292d
+cursor=2b292d fecdb2
+selection-foreground=fecdb2
+selection-background=4d424b
+
+regular0=1f1e20
+regular1=c05862
+regular2=b1b695
+regular3=f5d76e
+regular4=ffa07a
+regular5=f6b6c9
+regular6=bfbfcf
+regular7=f5f5f5
+
+bright0=2b292d
+bright1=e06b75
+bright2=9f9f7c
+bright3=fff27a
+bright4=e88c6f
+bright5=ffb9cc
+bright6=d1d1e0
+bright7=ffffff

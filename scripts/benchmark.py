@@ -7,8 +7,7 @@ import statistics
 import struct
 import sys
 import termios
-
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 def main() -> None:
@@ -30,9 +29,9 @@ def main() -> None:
         bench_bytes = f.read()
 
         for _ in range(args.iterations):
-            start = datetime.now()
+            start = datetime.now(tz=UTC)
             sys.stdout.buffer.write(bench_bytes)
-            stop = datetime.now()
+            stop = datetime.now(tz=UTC)
 
             times[f.name].append((stop - start).total_seconds())
 

@@ -200,6 +200,7 @@ done(void *data, struct zwp_text_input_v3 *zwp_text_input_v3,
         if (term != NULL) {
             if (term->is_searching) {
                 search_add_chars(term, text, len);
+                search_find_next(term, SEARCH_BACKWARD_SAME_POSITION);
                 render_refresh_search(term);
             } else
                 term_to_slave(term, text, len);
