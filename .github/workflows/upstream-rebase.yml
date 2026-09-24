@@ -1,0 +1,164 @@
+name: Rebase onto upstream foot
+
+# How this fork is organised:
+#
+#   upstream  an exact mirror of codeberg.org/dnkl/foot (master).
+#             Never commit to it; this workflow overwrites it.
+#   master    upstream + the vim mode commits stacked on top.
+#
+# Every week this workflow:
+#   1. updates `upstream` to the latest foot,
+#   2. rebases master onto it,
+#   3. builds and runs the tests,
+#   4. force-pushes master.
+#
+# If the rebase conflicts, or the result fails to build or pass the
+# tests, master is left untouched and an issue is opened with the
+# steps to fix it by hand. The issue is closed automatically by the
+# next successful run.
+#
+# Running it manually (Actions -> "Rebase onto upstream foot" ->
+# "Run workflow") always builds and tests, even if there is nothing
+# new upstream.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: upstream-rebase
+
+env:
+  UPSTREAM_URL: https://codeberg.org/dnkl/foot.git
+  ISSUE_TITLE: Upstream rebase failed
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Fetch upstream foot
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream master
+
+      - name: Update the upstream mirror branch
+        run: git push --force origin refs/remotes/upstream/master:refs/heads/upstream
+
+      - name: Rebase master onto upstream
+        id: rebase
+        run: |
+          echo "old-master=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "master is already on top of the latest upstream"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$(git rev-list --count HEAD..upstream/master) new upstream commit(s)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rebase upstream/master; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "reason=rebase conflict"
+              echo "details<<EOF"
+              echo "Conflict while applying: \`$(git log -1 --format='%h %s' REBASE_HEAD)\`"
+              echo
+              echo "Conflicting files:"
+              git diff --name-only --diff-filter=U | sed 's/^/- /'
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            git rebase --abort
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        if: steps.rebase.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              meson ninja-build pkg-config cmake gcc git scdoc ncurses-bin \
+              libwayland-dev wayland-protocols libxkbcommon-dev \
+              libfontconfig-dev libfreetype-dev libharfbuzz-dev \
+              libpixman-1-dev libutf8proc-dev libutempter-dev
+
+      - name: Build and test
+        id: build
+        if: steps.rebase.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          if ! { meson setup build --buildtype=release &&
+                 ninja -C build &&
+                 ninja -C build test; }
+          then
+            echo "reason=build or tests failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Push the rebased master
+        if: steps.rebase.outputs.changed == 'true'
+        run: |
+          # --force-with-lease: refuse if someone pushed to master
+          # while this workflow was running.
+          git push origin HEAD:master \
+              --force-with-lease=master:${{ steps.rebase.outputs.old-master }}
+
+      - name: Close the failure issue, if any
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+                         --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number"); do
+            gh issue close "$n" --comment "Fixed: master is rebased onto the latest upstream again."
+          done
+
+      - name: Open (or update) the failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REASON: ${{ steps.rebase.outputs.reason || steps.build.outputs.reason || 'workflow error' }}
+          DETAILS: ${{ steps.rebase.outputs.details }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body=$(cat <<EOF
+          The weekly rebase of master onto upstream foot failed: **$REASON**.
+          master was **not** changed. The \`upstream\` branch has the latest foot.
+
+          $DETAILS
+
+          Fix it locally:
+
+          \`\`\`sh
+          git fetch origin
+          git switch master && git reset --hard origin/master
+          git rebase origin/upstream
+          # on conflict: edit the files, then  git add <files> && git rebase --continue
+          meson setup build && ninja -C build && ninja -C build test
+          git push --force-with-lease origin master
+          \`\`\`
+
+          [Failed run]($RUN_URL)
+          EOF
+          )
+
+          n=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+                  --json number,title --jq "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number // empty")
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$body"
+          fi
