@@ -3084,8 +3084,12 @@ render_vim_position(struct terminal *term)
             grid, sb_start, term->vim.cursor.row & (grid->num_rows - 1)),
         total);
 
+    char pending[32];
+    vim_mode_pending_keys(term, pending, sizeof(pending));
+
     char pos_str[64];
-    snprintf(pos_str, sizeof(pos_str), "[%d/%d]", total - cursor_pos, total);
+    snprintf(pos_str, sizeof(pos_str), "%s[%d/%d]",
+             pending, total - cursor_pos, total);
 
     char32_t text[64];
     mbstoc32(text, pos_str, ALEN(text));

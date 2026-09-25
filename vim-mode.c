@@ -639,21 +639,9 @@ move_to_view_row(struct vim_ctx *ctx, int rel_row)
 }
 
 static void
-motion_high(struct vim_ctx *ctx)
-{
-    move_to_view_row(ctx, 0);
-}
-
-static void
 motion_middle(struct vim_ctx *ctx)
 {
     move_to_view_row(ctx, max(ctx->term->rows / 2 - 1, 0));
-}
-
-static void
-motion_low(struct vim_ctx *ctx)
-{
-    move_to_view_row(ctx, ctx->term->rows - 1);
 }
 
 /* Scroll the viewport 'lines' rows (negative is up), dragging the
@@ -709,11 +697,13 @@ scroll_end_action(struct terminal *term)
     return true;
 }
 
+/* Scroll the viewport so that the cursor ends up on view row
+ * 'view_row' (zt, zz, zb in vi). The cursor stays on its content */
 static bool
-center_on_cursor(struct terminal *term)
+scroll_cursor_to_view_row(struct terminal *term, int view_row)
 {
     struct vim_ctx ctx = ctx_for_term(term);
-    const int target_view = ctx.pos.row - (term->rows / 2 - 1);
+    const int target_view = ctx.pos.row - view_row;
     const int delta = view_sb(&ctx) - target_view;
 
     if (delta > 0)
@@ -731,6 +721,44 @@ motion(struct terminal *term, void (*fn)(struct vim_ctx *ctx))
     fn(&ctx);
     apply_cursor(&ctx);
     return true;
+}
+
+/* Repeat a motion 'count' times, stopping early when it no longer
+ * moves the cursor (e.g. at the top of the scrollback) */
+static bool
+motion_n(struct terminal *term, void (*fn)(struct vim_ctx *ctx), int count)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+
+    for (int i = 0; i < count; i++) {
+        const struct coord before = ctx.pos;
+        fn(&ctx);
+
+        if (ctx.pos.row == before.row && ctx.pos.col == before.col)
+            break;
+    }
+
+    apply_cursor(&ctx);
+    return true;
+}
+
+/* H/L with a count: move to the count:th row from the top/bottom of
+ * the viewport */
+static bool
+motion_view_row(struct terminal *term, int view_row)
+{
+    struct vim_ctx ctx = ctx_for_term(term);
+    move_to_view_row(&ctx, max(min(view_row, term->rows - 1), 0));
+    apply_cursor(&ctx);
+    return true;
+}
+
+static void
+pending_reset(struct terminal *term)
+{
+    term->vim.pending.count = 0;
+    term->vim.pending.prefix = 0;
+    term->vim.pending.char_cmd = 0;
 }
 
 void
@@ -764,6 +792,7 @@ vim_mode_begin(struct terminal *term)
     term->vim.inline_search.char_pending = false;
     term->vim.inline_search.backward = false;
     term->vim.inline_search.stop_short = false;
+    pending_reset(term);
 
     /* Keyboard input is never sent to the client while in vim mode */
     if (term_ime_is_enabled(term)) {
@@ -783,6 +812,8 @@ vim_mode_cancel(struct terminal *term)
     LOG_DBG("vim mode: cancel");
 
     term->vim.active = false;
+    term->vim.inline_search.char_pending = false;
+    pending_reset(term);
 
     if (term->vim.reenable_ime) {
         term->vim.reenable_ime = false;
@@ -855,67 +886,96 @@ vim_mode_resized(struct terminal *term)
     term->vim.cursor.col = ctx.pos.col;
 }
 
-/* Search for the last inline search character, within the current
- * logical line, like f/F/t/T/;/, in vi */
-static void
-inline_search_exec(struct terminal *term, bool backward)
+/* Find the next (or previous) occurrence of 'needle' after (before)
+ * '*pos', within the current logical line. Updates '*pos' on success */
+static bool
+inline_find(const struct vim_ctx *ctx, struct coord *pos_io,
+            char32_t needle, bool backward)
 {
-    const char32_t needle = term->vim.inline_search.character;
-    if (needle == U'\0')
-        return;
-
-    struct vim_ctx ctx = ctx_for_term(term);
-    const int last_col = term->cols - 1;
-    struct coord pos = ctx.pos;
-    bool found = false;
+    const int last_col = ctx->term->cols - 1;
+    struct coord pos = *pos_io;
 
     if (!backward) {
         /* Immediately stop if the starting point is on a line break */
-        if (pos.col == last_col && !row_wraps(&ctx, pos.row))
-            return;
+        if (pos.col == last_col && !row_wraps(ctx, pos.row))
+            return false;
 
-        while (!is_boundary(&ctx, pos, VIM_RIGHT)) {
-            pos = advance(&ctx, pos, VIM_RIGHT);
+        while (!is_boundary(ctx, pos, VIM_RIGHT)) {
+            pos = advance(ctx, pos, VIM_RIGHT);
 
-            const struct row *row = row_at(&ctx, pos.row);
+            const struct row *row = row_at(ctx, pos.row);
             if (!is_spacer(row, pos.col) &&
-                base_char(&ctx, row, pos.col) == needle)
+                base_char(ctx, row, pos.col) == needle)
             {
-                found = true;
-                break;
+                *pos_io = pos;
+                return true;
             }
 
-            if (pos.col == last_col && !row_wraps(&ctx, pos.row)) {
+            if (pos.col == last_col && !row_wraps(ctx, pos.row)) {
                 /* Hard line break - stop */
                 break;
             }
         }
     } else {
-        while (!is_boundary(&ctx, pos, VIM_LEFT)) {
-            struct coord prev = advance(&ctx, pos, VIM_LEFT);
+        while (!is_boundary(ctx, pos, VIM_LEFT)) {
+            struct coord prev = advance(ctx, pos, VIM_LEFT);
 
-            if (prev.col == last_col && !row_wraps(&ctx, prev.row)) {
+            if (prev.col == last_col && !row_wraps(ctx, prev.row)) {
                 /* Crossed a hard line break - stop */
                 break;
             }
 
             pos = prev;
 
-            const struct row *row = row_at(&ctx, pos.row);
+            const struct row *row = row_at(ctx, pos.row);
             if (!is_spacer(row, pos.col) &&
-                base_char(&ctx, row, pos.col) == needle)
+                base_char(ctx, row, pos.col) == needle)
             {
-                found = true;
-                break;
+                *pos_io = pos;
+                return true;
             }
         }
     }
 
-    if (!found)
+    return false;
+}
+
+/* Search for the last inline search character, within the current
+ * logical line, like f/F/t/T/;/, in vi. Moves to the count:th
+ * occurrence; like vi, the cursor does not move at all if there are
+ * fewer than 'count' occurrences. 'repeat' is true for ; and , */
+static void
+inline_search_exec(struct terminal *term, bool backward, int count,
+                   bool repeat)
+{
+    const char32_t needle = term->vim.inline_search.character;
+    if (needle == U'\0')
         return;
 
-    if (term->vim.inline_search.stop_short)
-        pos = advance(&ctx, pos, backward ? VIM_RIGHT : VIM_LEFT);
+    struct vim_ctx ctx = ctx_for_term(term);
+    const enum vim_direction back = backward ? VIM_RIGHT : VIM_LEFT;
+    struct coord pos = ctx.pos;
+
+    for (int i = 0; i < count; i++) {
+        if (!inline_find(&ctx, &pos, needle, backward))
+            return;
+    }
+
+    if (term->vim.inline_search.stop_short) {
+        struct coord target = advance(&ctx, pos, back);
+
+        if (repeat &&
+            target.row == ctx.pos.row && target.col == ctx.pos.col)
+        {
+            /* Repeating t/T from right next to the match would not
+             * move the cursor - skip to the next match, like vim */
+            if (!inline_find(&ctx, &pos, needle, backward))
+                return;
+            target = advance(&ctx, pos, back);
+        }
+
+        pos = target;
+    }
 
     ctx.pos = pos;
     apply_cursor(&ctx);
@@ -972,7 +1032,9 @@ inline_search_capture(struct seat *seat, struct terminal *term, uint32_t key)
     }
 
     term->vim.inline_search.character = c32s[0];
-    inline_search_exec(term, term->vim.inline_search.backward);
+    inline_search_exec(
+        term, term->vim.inline_search.backward,
+        max(term->vim.pending.count, 1), false);
 }
 
 /* Start a new selection at the cursor, toggle an existing one of the
@@ -1034,35 +1096,65 @@ yank(struct seat *seat, struct terminal *term, uint32_t serial)
     return true;
 }
 
-/* Jump to the next/previous match of the last search query */
+/* Jump to the count:th next/previous match of the last search query */
 static bool
-search_jump(struct terminal *term, bool backward)
+search_jump(struct terminal *term, bool backward, int count)
 {
     struct vim_ctx ctx = ctx_for_term(term);
+    struct coord pos = ctx.pos;
+    bool moved = false;
 
-    /* Start the search at the cell next to the cursor */
-    struct coord start =
-        advance(&ctx, ctx.pos, backward ? VIM_LEFT : VIM_RIGHT);
-    start.row = sb_to_abs(&ctx, start.row);
+    for (int i = 0; i < count; i++) {
+        /* Start the search at the cell next to the cursor */
+        struct coord start =
+            advance(&ctx, pos, backward ? VIM_LEFT : VIM_RIGHT);
+        start.row = sb_to_abs(&ctx, start.row);
 
-    struct range match;
-    if (!search_find_last_query(
-            term, start, backward ? SEARCH_BACKWARD : SEARCH_FORWARD, &match))
-    {
-        return true;
+        struct range match;
+        if (!search_find_last_query(
+                term, start, backward ? SEARCH_BACKWARD : SEARCH_FORWARD,
+                &match))
+        {
+            break;
+        }
+
+        const struct coord next = {
+            .col = max(min(match.start.col, term->cols - 1), 0),
+            .row = min(abs_to_sb(&ctx, match.start.row), ctx.sb_max),
+        };
+
+        if (next.row == pos.row && next.col == pos.col) {
+            /* The only match - no point in searching again */
+            break;
+        }
+
+        pos = next;
+        moved = true;
     }
 
-    ctx.pos.row = min(abs_to_sb(&ctx, match.start.row), ctx.sb_max);
-    ctx.pos.col = max(min(match.start.col, term->cols - 1), 0);
-    apply_cursor(&ctx);
+    if (moved) {
+        ctx.pos = pos;
+        apply_cursor(&ctx);
+    }
     return true;
 }
 
-static bool
-execute_binding(struct seat *seat, struct terminal *term,
-                const struct key_binding *binding, uint32_t serial)
+/* Scale a scroll amount by a count, without overflowing */
+static int
+scroll_amount(const struct terminal *term, int lines, int count)
 {
-    const enum bind_action_vim action = binding->action;
+    const long long total = (long long)lines * count;
+    return total > term->grid->num_rows ? term->grid->num_rows : (int)total;
+}
+
+/* Execute a vim mode action. 'count' is the typed count prefix (e.g.
+ * 5 in 5j), or 0 when none was typed. Actions where a count makes no
+ * sense ignore it */
+static bool
+execute_action(struct seat *seat, struct terminal *term,
+               enum bind_action_vim action, int count, uint32_t serial)
+{
+    const int n = max(count, 1);
 
     switch (action) {
     case BIND_ACTION_VIM_NONE:
@@ -1074,16 +1166,16 @@ execute_binding(struct seat *seat, struct terminal *term,
         return true;
 
     case BIND_ACTION_VIM_UP:
-        return motion(term, &motion_up);
+        return motion_n(term, &motion_up, n);
 
     case BIND_ACTION_VIM_DOWN:
-        return motion(term, &motion_down);
+        return motion_n(term, &motion_down, n);
 
     case BIND_ACTION_VIM_LEFT:
-        return motion(term, &motion_left);
+        return motion_n(term, &motion_left, n);
 
     case BIND_ACTION_VIM_RIGHT:
-        return motion(term, &motion_right);
+        return motion_n(term, &motion_right, n);
 
     case BIND_ACTION_VIM_FIRST:
         return motion(term, &motion_first);
@@ -1095,66 +1187,68 @@ execute_binding(struct seat *seat, struct terminal *term,
         return motion(term, &motion_first_occupied);
 
     case BIND_ACTION_VIM_HIGH:
-        return motion(term, &motion_high);
+        return motion_view_row(term, n - 1);
 
     case BIND_ACTION_VIM_MIDDLE:
         return motion(term, &motion_middle);
 
     case BIND_ACTION_VIM_LOW:
-        return motion(term, &motion_low);
+        return motion_view_row(term, term->rows - n);
 
     case BIND_ACTION_VIM_SEMANTIC_LEFT:
-        return motion(term, &motion_semantic_left);
+        return motion_n(term, &motion_semantic_left, n);
 
     case BIND_ACTION_VIM_SEMANTIC_RIGHT:
-        return motion(term, &motion_semantic_right);
+        return motion_n(term, &motion_semantic_right, n);
 
     case BIND_ACTION_VIM_SEMANTIC_LEFT_END:
-        return motion(term, &motion_semantic_left_end);
+        return motion_n(term, &motion_semantic_left_end, n);
 
     case BIND_ACTION_VIM_SEMANTIC_RIGHT_END:
-        return motion(term, &motion_semantic_right_end);
+        return motion_n(term, &motion_semantic_right_end, n);
 
     case BIND_ACTION_VIM_WORD_LEFT:
-        return motion(term, &motion_word_left);
+        return motion_n(term, &motion_word_left, n);
 
     case BIND_ACTION_VIM_WORD_RIGHT:
-        return motion(term, &motion_word_right);
+        return motion_n(term, &motion_word_right, n);
 
     case BIND_ACTION_VIM_WORD_LEFT_END:
-        return motion(term, &motion_word_left_end);
+        return motion_n(term, &motion_word_left_end, n);
 
     case BIND_ACTION_VIM_WORD_RIGHT_END:
-        return motion(term, &motion_word_right_end);
+        return motion_n(term, &motion_word_right_end, n);
 
     case BIND_ACTION_VIM_BRACKET:
         return motion(term, &motion_bracket);
 
     case BIND_ACTION_VIM_PARAGRAPH_UP:
-        return motion(term, &motion_paragraph_up);
+        return motion_n(term, &motion_paragraph_up, n);
 
     case BIND_ACTION_VIM_PARAGRAPH_DOWN:
-        return motion(term, &motion_paragraph_down);
+        return motion_n(term, &motion_paragraph_down, n);
 
     case BIND_ACTION_VIM_SCROLLBACK_UP_PAGE:
-        return scroll_action(term, -term->rows);
+        return scroll_action(term, -scroll_amount(term, term->rows, n));
 
     case BIND_ACTION_VIM_SCROLLBACK_UP_HALF_PAGE:
-        return scroll_action(term, -max(term->rows / 2, 1));
+        return scroll_action(
+            term, -scroll_amount(term, max(term->rows / 2, 1), n));
 
     case BIND_ACTION_VIM_SCROLLBACK_UP_LINE:
         /* vim_mode_view_changed() drags the cursor along */
-        cmd_scrollback_up(term, 1);
+        cmd_scrollback_up(term, scroll_amount(term, 1, n));
         return true;
 
     case BIND_ACTION_VIM_SCROLLBACK_DOWN_PAGE:
-        return scroll_action(term, term->rows);
+        return scroll_action(term, scroll_amount(term, term->rows, n));
 
     case BIND_ACTION_VIM_SCROLLBACK_DOWN_HALF_PAGE:
-        return scroll_action(term, max(term->rows / 2, 1));
+        return scroll_action(
+            term, scroll_amount(term, max(term->rows / 2, 1), n));
 
     case BIND_ACTION_VIM_SCROLLBACK_DOWN_LINE:
-        cmd_scrollback_down(term, 1);
+        cmd_scrollback_down(term, scroll_amount(term, 1, n));
         return true;
 
     case BIND_ACTION_VIM_SCROLLBACK_HOME:
@@ -1164,7 +1258,13 @@ execute_binding(struct seat *seat, struct terminal *term,
         return scroll_end_action(term);
 
     case BIND_ACTION_VIM_CENTER_CURSOR:
-        return center_on_cursor(term);
+        return scroll_cursor_to_view_row(term, term->rows / 2 - 1);
+
+    case BIND_ACTION_VIM_SCROLL_CURSOR_TO_TOP:
+        return scroll_cursor_to_view_row(term, 0);
+
+    case BIND_ACTION_VIM_SCROLL_CURSOR_TO_BOTTOM:
+        return scroll_cursor_to_view_row(term, term->rows - 1);
 
     case BIND_ACTION_VIM_TOGGLE_NORMAL_SELECTION:
         return toggle_selection(term, SELECTION_CHAR_WISE);
@@ -1190,6 +1290,8 @@ execute_binding(struct seat *seat, struct terminal *term,
         motion(term, &motion_last);
         return yank(seat, term, serial);
 
+    /* The count is kept pending until the target character is typed,
+     * see vim_mode_input() */
     case BIND_ACTION_VIM_INLINE_SEARCH_FORWARD:
         return inline_search_start(term, false, false);
 
@@ -1203,11 +1305,11 @@ execute_binding(struct seat *seat, struct terminal *term,
         return inline_search_start(term, true, true);
 
     case BIND_ACTION_VIM_INLINE_SEARCH_NEXT:
-        inline_search_exec(term, term->vim.inline_search.backward);
+        inline_search_exec(term, term->vim.inline_search.backward, n, true);
         return true;
 
     case BIND_ACTION_VIM_INLINE_SEARCH_PREVIOUS:
-        inline_search_exec(term, !term->vim.inline_search.backward);
+        inline_search_exec(term, !term->vim.inline_search.backward, n, true);
         return true;
 
     case BIND_ACTION_VIM_SEARCH_START:
@@ -1221,10 +1323,10 @@ execute_binding(struct seat *seat, struct terminal *term,
         return true;
 
     case BIND_ACTION_VIM_SEARCH_NEXT:
-        return search_jump(term, term->vim.search_backward);
+        return search_jump(term, term->vim.search_backward, n);
 
     case BIND_ACTION_VIM_SEARCH_PREVIOUS:
-        return search_jump(term, !term->vim.search_backward);
+        return search_jump(term, !term->vim.search_backward, n);
 
     case BIND_ACTION_VIM_COUNT:
         BUG("Invalid action type");
@@ -1233,6 +1335,136 @@ execute_binding(struct seat *seat, struct terminal *term,
 
     BUG("Unhandled action type");
     return false;
+}
+
+/*
+ * Built-in two-key commands, like in vi.
+ *
+ * A prefix key (g, z) only starts a command when it is not bound to
+ * an action itself; binding e.g. 'g' in [vim-bindings] disables all
+ * g-commands. The actions are regular actions, and can additionally
+ * be bound to single keys.
+ */
+static const struct {
+    xkb_keysym_t prefix;
+    xkb_keysym_t key;
+    enum bind_action_vim action;
+} sequences[] = {
+    {XKB_KEY_g, XKB_KEY_g, BIND_ACTION_VIM_SCROLLBACK_HOME},
+    {XKB_KEY_g, XKB_KEY_e, BIND_ACTION_VIM_SEMANTIC_LEFT_END},
+    {XKB_KEY_g, XKB_KEY_E, BIND_ACTION_VIM_WORD_LEFT_END},
+    {XKB_KEY_z, XKB_KEY_z, BIND_ACTION_VIM_CENTER_CURSOR},
+    {XKB_KEY_z, XKB_KEY_t, BIND_ACTION_VIM_SCROLL_CURSOR_TO_TOP},
+    {XKB_KEY_z, XKB_KEY_b, BIND_ACTION_VIM_SCROLL_CURSOR_TO_BOTTOM},
+};
+
+/* Largest count prefix accepted (further digits are ignored) */
+#define VIM_MAX_COUNT 9999
+
+static bool
+is_prefix_key(xkb_keysym_t sym)
+{
+    for (size_t i = 0; i < ALEN(sequences); i++) {
+        if (sequences[i].prefix == sym)
+            return true;
+    }
+    return false;
+}
+
+static enum bind_action_vim
+sequence_action(xkb_keysym_t prefix, xkb_keysym_t key)
+{
+    for (size_t i = 0; i < ALEN(sequences); i++) {
+        if (sequences[i].prefix == prefix && sequences[i].key == key)
+            return sequences[i].action;
+    }
+    return BIND_ACTION_VIM_NONE;
+}
+
+/* The value of a digit key, or -1 */
+static int
+digit_value(xkb_keysym_t sym)
+{
+    if (sym >= XKB_KEY_0 && sym <= XKB_KEY_9)
+        return sym - XKB_KEY_0;
+    if (sym >= XKB_KEY_KP_0 && sym <= XKB_KEY_KP_9)
+        return sym - XKB_KEY_KP_0;
+    return -1;
+}
+
+/* Copied from input.c (which copied it from libxkbcommon) */
+static bool
+keysym_is_modifier(xkb_keysym_t keysym)
+{
+    return
+        (keysym >= XKB_KEY_Shift_L && keysym <= XKB_KEY_Hyper_R) ||
+        (keysym >= XKB_KEY_ISO_Lock && keysym <= XKB_KEY_ISO_Last_Group_Lock) ||
+        keysym == XKB_KEY_Mode_switch ||
+        keysym == XKB_KEY_Num_Lock;
+}
+
+static const struct key_binding *
+find_binding(const struct key_binding_set *bindings, uint32_t key,
+             xkb_keysym_t sym, xkb_mod_mask_t mods, xkb_mod_mask_t consumed,
+             const xkb_keysym_t *raw_syms, size_t raw_count)
+{
+    /* Match untranslated symbols */
+    tll_foreach(bindings->vim, it) {
+        const struct key_binding *bind = &it->item;
+
+        if (bind->mods != mods || bind->mods == 0)
+            continue;
+
+        for (size_t i = 0; i < raw_count; i++) {
+            if (bind->k.sym == raw_syms[i])
+                return bind;
+        }
+    }
+
+    /* Match translated symbol */
+    tll_foreach(bindings->vim, it) {
+        const struct key_binding *bind = &it->item;
+
+        if (bind->k.sym == sym && bind->mods == (mods & ~consumed))
+            return bind;
+    }
+
+    /* Match raw key code */
+    tll_foreach(bindings->vim, it) {
+        const struct key_binding *bind = &it->item;
+
+        if (bind->mods != mods || bind->mods == 0)
+            continue;
+
+        tll_foreach(bind->k.key_codes, code) {
+            if (code->item == key)
+                return bind;
+        }
+    }
+
+    return NULL;
+}
+
+void
+vim_mode_pending_keys(const struct terminal *term, char *buf, size_t size)
+{
+    const int count = term->vim.pending.count;
+    const xkb_keysym_t sym = term->vim.pending.prefix != 0
+        ? term->vim.pending.prefix
+        : term->vim.inline_search.char_pending
+            ? term->vim.pending.char_cmd
+            : 0;
+
+    char key[16] = {0};
+    if (sym != 0 && xkb_keysym_to_utf8(sym, key, sizeof(key)) <= 0)
+        key[0] = '\0';
+
+    if (count > 0)
+        snprintf(buf, size, "%d%s ", count, key);
+    else if (key[0] != '\0')
+        snprintf(buf, size, "%s ", key);
+    else if (size > 0)
+        buf[0] = '\0';
 }
 
 void
@@ -1246,54 +1478,97 @@ vim_mode_input(struct seat *seat, struct terminal *term,
             sym, sym, mods, consumed);
 
     if (term->vim.inline_search.char_pending) {
+        /* Uses, and then clears, the pending count */
         inline_search_capture(seat, term, key);
+
+        if (!term->vim.inline_search.char_pending) {
+            pending_reset(term);
+            render_refresh(term);
+        }
         return;
     }
 
-    /* Match untranslated symbols */
-    tll_foreach(bindings->vim, it) {
-        const struct key_binding *bind = &it->item;
+    /* Pressing e.g. shift, to type the 'E' in 'gE', must not abort a
+     * pending command */
+    if (keysym_is_modifier(sym))
+        return;
 
-        if (bind->mods != mods || bind->mods == 0)
-            continue;
+    /* Modifiers beyond those consumed by the key itself. Zero for a
+     * plain key press, including shifted characters like 'E' */
+    const xkb_mod_mask_t plain_mods =
+        mods & ~consumed & seat->kbd.legacy_significant;
 
-        for (size_t i = 0; i < raw_count; i++) {
-            if (bind->k.sym == raw_syms[i]) {
-                if (execute_binding(seat, term, bind, serial))
-                    seat->kbd.last_shortcut_sym = sym;
-                return;
-            }
+    /* Second key of a two-key command */
+    if (term->vim.pending.prefix != 0) {
+        const xkb_keysym_t prefix = term->vim.pending.prefix;
+        const int count = term->vim.pending.count;
+        pending_reset(term);
+
+        /* Anything that doesn't complete a command aborts it, like in vi */
+        const enum bind_action_vim action = plain_mods == 0
+            ? sequence_action(prefix, sym)
+            : BIND_ACTION_VIM_NONE;
+
+        if (action != BIND_ACTION_VIM_NONE &&
+            execute_action(seat, term, action, count, serial))
+        {
+            seat->kbd.last_shortcut_sym = sym;
         }
+
+        render_refresh(term);
+        return;
     }
 
-    /* Match translated symbol */
-    tll_foreach(bindings->vim, it) {
-        const struct key_binding *bind = &it->item;
+    /* Count prefix. '0' is only part of a count when it isn't the
+     * first digit; on its own, it is a regular key (first column) */
+    if (plain_mods == 0) {
+        const int digit = digit_value(sym);
 
-        if (bind->k.sym == sym &&
-            bind->mods == (mods & ~consumed))
-        {
-            if (execute_binding(seat, term, bind, serial))
-                seat->kbd.last_shortcut_sym = sym;
+        if (digit > 0 || (digit == 0 && term->vim.pending.count > 0)) {
+            term->vim.pending.count =
+                min(term->vim.pending.count * 10 + digit, VIM_MAX_COUNT);
+            render_refresh(term);
             return;
         }
     }
 
-    /* Match raw key code */
-    tll_foreach(bindings->vim, it) {
-        const struct key_binding *bind = &it->item;
-
-        if (bind->mods != mods || bind->mods == 0)
-            continue;
-
-        tll_foreach(bind->k.key_codes, code) {
-            if (code->item == key) {
-                if (execute_binding(seat, term, bind, serial))
-                    seat->kbd.last_shortcut_sym = sym;
-                return;
-            }
-        }
+    /* Escape only aborts a pending count */
+    if (sym == XKB_KEY_Escape && term->vim.pending.count > 0) {
+        pending_reset(term);
+        render_refresh(term);
+        return;
     }
 
-    /* All other input is swallowed while in vim mode */
+    const struct key_binding *bind = find_binding(
+        bindings, key, sym, mods, consumed, raw_syms, raw_count);
+
+    if (bind != NULL) {
+        const int count = term->vim.pending.count;
+
+        if (execute_action(seat, term, bind->action, count, serial))
+            seat->kbd.last_shortcut_sym = sym;
+
+        if (term->vim.active && term->vim.inline_search.char_pending) {
+            /* f/F/t/T: keep the count until the character is typed */
+            term->vim.pending.char_cmd = sym;
+        } else
+            pending_reset(term);
+
+        render_refresh(term);
+        return;
+    }
+
+    /* First key of a two-key command */
+    if (plain_mods == 0 && is_prefix_key(sym)) {
+        term->vim.pending.prefix = sym;
+        render_refresh(term);
+        return;
+    }
+
+    /* All other input is swallowed while in vim mode, and aborts any
+     * pending count */
+    if (term->vim.pending.count > 0) {
+        pending_reset(term);
+        render_refresh(term);
+    }
 }
