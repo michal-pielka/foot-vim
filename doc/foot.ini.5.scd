@@ -1694,7 +1694,43 @@ vim mode.
 While vim mode is active, the cursor's position within the
 scrollback is displayed in the top right corner, as
 _[lines-above-the-bottom/total-lines]_. It is colored using
-*[colors].scrollback-indicator*.
+*[colors-dark].scrollback-indicator*. A partially typed command, e.g.
+_12_ or _g_, is shown in front of it.
+
+## Counts
+
+Like in vi, most motions accept a count, typed before them: _5j_
+moves five rows down, _3w_ three words forward, _2fx_ to the second
+_x_, and _3n_ to the third next search match. A count also repeats
+*up*, *down*, *left*, *right*, the word and paragraph motions,
+scrolling, *inline-search-next*/*inline-search-previous* and
+*search-next*/*search-previous*. With *high* and *low*, it selects
+the count:th row from the top/bottom of the viewport. Other actions
+ignore it. _Escape_ discards a typed count.
+
+The digits *1*-*9* always start a count. *0* continues a count, but
+is a regular key (*first*) on its own.
+
+## Two-key commands
+
+The following vi commands are built in:
+
+[[ *Keys*
+:[ *Action*
+|  _gg_
+:  *scrollback-home*
+|  _ge_, _gE_
+:  *semantic-left-end*, *word-left-end*
+|  _zz_
+:  *center-cursor*
+|  _zt_, _zb_
+:  *scroll-cursor-to-top*, *scroll-cursor-to-bottom*
+
+Binding _g_ or _z_ to an action disables the commands starting with
+that key. The actions can also be bound to single keys, like any
+other action.
+
+## Actions
 
 *cancel*
 	Exits vim mode, and scrolls the view back to the bottom. Default:
@@ -1727,7 +1763,8 @@ _[lines-above-the-bottom/total-lines]_. It is colored using
 	*[main].word-delimiters*. Default: _b_, _w_.
 
 *semantic-left-end*, *semantic-right-end*
-	Move to the end of the previous/next word. Default: _none_, _e_.
+	Move to the end of the previous/next word. Default: _none_ (_ge_),
+	_e_.
 
 *word-left*, *word-right*
 	Move to the start of the previous/next whitespace separated word.
@@ -1735,7 +1772,7 @@ _[lines-above-the-bottom/total-lines]_. It is colored using
 
 *word-left-end*, *word-right-end*
 	Move to the end of the previous/next whitespace separated word.
-	Default: _none_, _Shift+e_.
+	Default: _none_ (_gE_), _Shift+e_.
 
 *bracket*
 	Move to the bracket matching the one under the cursor. *()*,
@@ -1755,11 +1792,15 @@ _[lines-above-the-bottom/total-lines]_. It is colored using
 
 *scrollback-home*, *scrollback-end*
 	Move the cursor, and the view, to the beginning/end of the
-	scrollback. Default: _g_, _Shift+g_.
+	scrollback. Default: _none_ (_gg_), _Shift+g_.
 
 *center-cursor*
 	Scroll the view, so that the cursor row is centered. Default:
-	_z_.
+	_none_ (_zz_).
+
+*scroll-cursor-to-top*, *scroll-cursor-to-bottom*
+	Scroll the view, so that the cursor row is at the top/bottom.
+	Default: _none_ (_zt_), _none_ (_zb_).
 
 *toggle-normal-selection*, *toggle-line-selection*, *toggle-block-selection*, *toggle-semantic-selection*
 	Start a character/line/block/word wise selection at the cursor.

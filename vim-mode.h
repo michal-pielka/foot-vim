@@ -23,6 +23,11 @@ void vim_mode_view_changed(struct terminal *term);
 /* Re-clamp the cursor after the grid has been resized */
 void vim_mode_resized(struct terminal *term);
 
+/* The partially typed command (e.g. "12g "), for display. Empty when
+ * there is none */
+void vim_mode_pending_keys(
+    const struct terminal *term, char *buf, size_t size);
+
 static inline bool
 vim_mode_is_active(const struct terminal *term)
 {

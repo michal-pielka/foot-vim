@@ -243,7 +243,7 @@ right corner, and all keyboard input is consumed by vim mode.
 <kbd>h</kbd>/<kbd>j</kbd>/<kbd>k</kbd>/<kbd>l</kbd>, arrow keys
 : Move the cursor
 
-<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd>, <kbd>W</kbd>/<kbd>B</kbd>/<kbd>E</kbd>
+<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd>/<kbd>ge</kbd>, <kbd>W</kbd>/<kbd>B</kbd>/<kbd>E</kbd>/<kbd>gE</kbd>
 : Move by word (using the configured word delimiters, or whitespace)
 
 <kbd>0</kbd>/<kbd>$</kbd>/<kbd>^</kbd>
@@ -259,8 +259,11 @@ right corner, and all keyboard input is consumed by vim mode.
 <kbd>ctrl</kbd>+<kbd>b</kbd>/<kbd>f</kbd>/<kbd>u</kbd>/<kbd>d</kbd>/<kbd>y</kbd>/<kbd>e</kbd>
 : Scroll a page, half page or line up/down
 
-<kbd>g</kbd>/<kbd>G</kbd>, <kbd>z</kbd>
-: Jump to the beginning/end of the scrollback; center the cursor row
+<kbd>gg</kbd>/<kbd>G</kbd>
+: Jump to the beginning/end of the scrollback
+
+<kbd>zz</kbd>/<kbd>zt</kbd>/<kbd>zb</kbd>
+: Scroll so that the cursor row is centered/at the top/at the bottom
 
 <kbd>v</kbd>/<kbd>V</kbd>/<kbd>ctrl</kbd>+<kbd>v</kbd>/<kbd>alt</kbd>+<kbd>v</kbd>
 : Start a character/line/block/word wise selection (motions extend it)
@@ -277,8 +280,13 @@ right corner, and all keyboard input is consumed by vim mode.
 : Start a scrollback search (committing moves the cursor to the
   match), and jump to the next/previous match
 
-All bindings are configurable in the `[vim-bindings]` section of
-`foot.ini`.
+Most motions take a count, like in vi: <kbd>5j</kbd>,
+<kbd>3w</kbd>, <kbd>2fx</kbd>, <kbd>3n</kbd>, <kbd>2</kbd><kbd>ctrl</kbd>+<kbd>d</kbd>.
+A partially typed command is shown next to the position indicator;
+<kbd>escape</kbd> discards a count.
+
+All single-key bindings are configurable in the `[vim-bindings]`
+section of `foot.ini`.
 
 
 ### URL mode
