@@ -645,6 +645,13 @@ struct terminal {
             bool stop_short;     /* Stop just before the match (t/T) */
             bool char_pending;   /* Next typed character is the target */
         } inline_search;
+
+        /* A partially typed command, e.g. '12' or 'g' in '12gg' */
+        struct {
+            int count;           /* Count prefix, 0 if none */
+            uint32_t prefix;     /* Keysym of a pending prefix key (g, z), or 0 */
+            uint32_t char_cmd;   /* Keysym of a pending f/F/t/T, for display only */
+        } pending;
     } vim;
 
     struct wayland *wl;
