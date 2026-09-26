@@ -23,6 +23,10 @@ void vim_mode_view_changed(struct terminal *term);
 /* Re-clamp the cursor after the grid has been resized */
 void vim_mode_resized(struct terminal *term);
 
+/* Reset the cursor if the row it is on has been freed (e.g. by an
+ * erased scrollback). Must be called before dereferencing its row */
+void vim_mode_validate_cursor(struct terminal *term);
+
 /* The partially typed command (e.g. "12g "), for display. Empty when
  * there is none */
 void vim_mode_pending_keys(
