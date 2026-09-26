@@ -3469,7 +3469,8 @@ static void
 cursor_row_and_col(struct terminal *term, struct row **row, int *col)
 {
     if (unlikely(term->vim.active)) {
-        *row = term->grid->rows[term->vim.cursor.row & (term->grid->num_rows - 1)];
+        vim_mode_validate_cursor(term);
+        *row = term->grid->rows[term->vim.cursor.row];
         *col = term->vim.cursor.col;
     } else {
         *row = grid_row(term->grid, term->grid->cursor.point.row);
