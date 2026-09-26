@@ -47,9 +47,51 @@ sb_to_abs(const struct vim_ctx *ctx, int sb_row)
     return (ctx->sb_start + sb_row) & (ctx->grid->num_rows - 1);
 }
 
+/* Place the cursor at the terminal cursor if it is inside the
+ * current viewport, otherwise at the top-left of the viewport */
+static void
+cursor_to_start_position(struct terminal *term)
+{
+    struct grid *grid = term->grid;
+    const int cursor_abs =
+        (grid->offset + grid->cursor.point.row) & (grid->num_rows - 1);
+    const int view_rel =
+        (cursor_abs - grid->view + grid->num_rows) & (grid->num_rows - 1);
+
+    if (view_rel < term->rows) {
+        term->vim.cursor.row = cursor_abs;
+        term->vim.cursor.col = min(grid->cursor.point.col, term->cols - 1);
+    } else {
+        term->vim.cursor.row = grid->view;
+        term->vim.cursor.col = 0;
+    }
+}
+
+void
+vim_mode_validate_cursor(struct terminal *term)
+{
+    if (!term->vim.active)
+        return;
+
+    struct grid *grid = term->grid;
+
+    term->vim.cursor.row &= grid->num_rows - 1;
+    term->vim.cursor.col = max(min(term->vim.cursor.col, term->cols - 1), 0);
+
+    if (likely(grid->rows[term->vim.cursor.row] != NULL))
+        return;
+
+    /* The row under the cursor has been freed, e.g. by the client
+     * erasing the scrollback (CSI 3 J), or by a reverse scroll */
+    LOG_DBG("vim mode: cursor row has been freed, resetting cursor");
+    cursor_to_start_position(term);
+}
+
 static struct vim_ctx
 ctx_for_term(struct terminal *term)
 {
+    vim_mode_validate_cursor(term);
+
     struct grid *grid = term->grid;
     struct vim_ctx ctx = {.term = term, .grid = grid};
 
@@ -770,22 +812,7 @@ vim_mode_begin(struct terminal *term)
     LOG_DBG("vim mode: begin");
 
     selection_cancel(term);
-
-    /* Place the cursor at the terminal cursor if it is inside the
-     * current viewport, otherwise at the top-left of the viewport */
-    struct grid *grid = term->grid;
-    const int cursor_abs =
-        (grid->offset + grid->cursor.point.row) & (grid->num_rows - 1);
-    const int view_rel =
-        (cursor_abs - grid->view + grid->num_rows) & (grid->num_rows - 1);
-
-    if (view_rel < term->rows) {
-        term->vim.cursor.row = cursor_abs;
-        term->vim.cursor.col = min(grid->cursor.point.col, term->cols - 1);
-    } else {
-        term->vim.cursor.row = grid->view;
-        term->vim.cursor.col = 0;
-    }
+    cursor_to_start_position(term);
 
     term->vim.active = true;
     term->vim.inline_search.character = U'\0';
@@ -870,17 +897,8 @@ vim_mode_resized(struct terminal *term)
     if (!term->vim.active)
         return;
 
-    struct grid *grid = term->grid;
-
-    term->vim.cursor.row &= grid->num_rows - 1;
-    term->vim.cursor.col = max(min(term->vim.cursor.col, term->cols - 1), 0);
-
-    if (grid->rows[term->vim.cursor.row] == NULL) {
-        term->vim.cursor = (struct coord){.col = 0, .row = grid->view};
-        return;
-    }
-
-    /* Ensure the cursor is not in the unallocated part of the ring */
+    /* Ensure the cursor is not in the unallocated part of the ring.
+     * ctx_for_term() resets it if its row has been freed */
     struct vim_ctx ctx = ctx_for_term(term);
     term->vim.cursor.row = sb_to_abs(&ctx, ctx.pos.row);
     term->vim.cursor.col = ctx.pos.col;
